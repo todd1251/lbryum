@@ -98,9 +98,12 @@ def format_amount_value(obj):
     if isinstance(obj, dict):
         for k, v in obj.iteritems():
             if k == 'amount' or k == 'effective_amount':
-                obj[k] = float(obj[k]) / float(COIN)
+                if type(obj[k]) == float:
+                    obj[k] = Decimal(obj[k])
+                else:
+                    obj[k] = Decimal(obj[k]) / COIN
             elif k == 'supports' and isinstance(v, list):
-                obj[k] = [{'txid': txid, 'nout': nout, 'amount': float(amount) / float(COIN)}
+                obj[k] = [{'txid': txid, 'nout': nout, 'amount': Decimal(amount) / COIN}
                           for (txid, nout, amount) in v]
             elif isinstance(v, (list, dict)):
                 obj[k] = format_amount_value(v)
@@ -238,7 +241,7 @@ class Commands(object):
         l = copy.deepcopy(self.wallet.get_spendable_coins(exclude_frozen=False))
         for i in l:
             v = i["value"]
-            i["value"] = float(v) / COIN if v is not None else None
+            i["value"] = Decimal(v) / COIN if v is not None else None
         return l
 
     @command('n')
@@ -606,7 +609,7 @@ class Commands(object):
                 'timestamp': timestamp,
                 'date': "%16s" % time_str,
                 'label': label,
-                'value': float(value) / COIN if value is not None else None,
+                'value': Decimal(value) / COIN if value is not None else None,
                 'confirmations': conf}
             )
         return out
@@ -747,6 +750,9 @@ class Commands(object):
         if 'height' in claim_result and claim_result['height'] is None:
             claim_result['height'] = -1
 
+        if 'amount' in claim_result and type(claim_result['amount']) is not Decimal:
+            claim_result = format_amount_value(claim_result)
+
         return claim_result
 
     @staticmethod
@@ -780,8 +786,8 @@ class Commands(object):
                 'claim_id': claim_id,
                 'txid': txid,
                 'nout': n,
-                'amount': str(Decimal(amount) / COIN),
-                'effective_amount': str(Decimal(effective_amount) / COIN),
+                'amount': Decimal(amount) / COIN,
+                'effective_amount': Decimal(effective_amount) / COIN,
                 'height': height,
                 'depth': depth,
                 'claim_sequence': claim_sequence,
@@ -792,7 +798,7 @@ class Commands(object):
 
         def _parse_proof_result(name, result):
             support_amount = sum(samount for stxid, sn, samount in result['supports'])
-            supports = [{'txid': stxid, 'nout': snout, 'amount': float(samount) / float(COIN)}
+            supports = [{'txid': stxid, 'nout': snout, 'amount': Decimal(samount) / COIN}
                         for (stxid, snout, samount) in result['supports']]
             if 'txhash' in result['proof'] and 'nOut' in result['proof']:
                 if 'transaction' in result:
@@ -1112,6 +1118,7 @@ class Commands(object):
         block_hash = self.network.blockchain.hash_header(block_header)
         response = self.network.synchronous_get(('blockchain.claimtrie.getvaluesforuris',
                                                  (block_hash,) + uris_to_send))
+        response = format_amount_value(response)
         result = {}
         for uri, resolution in response.iteritems():
             result[uri] = self._handle_resolve_uri_response(parse_lbry_uri(str(uri)), block_header,
