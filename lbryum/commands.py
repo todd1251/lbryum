@@ -1624,6 +1624,20 @@ class Commands(object):
         return {"success": True, "txid": tx.hash(), "nout": nout, "tx": str(tx),
                 "fee": str(Decimal(tx.get_fee()) / COIN)}
 
+    @command('wpn')
+    def sendwithsupport(self, claim_id, amount, broadcast=True, tx_fee=None,
+                        change_addr=None):
+        """
+        Send credits to a claim's address via a support transaction
+        """
+
+        claim = self.getclaimbyid(claim_id)
+        if claim.get('signature_is_valid') is False:
+            return {'error: refusing to support a claim with an invalid signature'}
+        claim_addr = claim['address']
+        name = claim['name']
+        return self.support(name, claim_id, amount, broadcast, claim_addr, tx_fee, change_addr)
+
     def verify_request_to_make_claim(self, uri, val, certificate_id):
         try:
             parsed_uri = parse_lbry_uri(uri)
