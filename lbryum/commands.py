@@ -98,12 +98,10 @@ def format_amount_value(obj):
     if isinstance(obj, dict):
         for k, v in obj.iteritems():
             if k == 'amount' or k == 'effective_amount':
-                if type(obj[k]) == float:
-                    obj[k] = Decimal(obj[k])
-                else:
-                    obj[k] = Decimal(obj[k]) / COIN
+                if not isinstance(obj[k], float):
+                    obj[k] = float(obj[k]) / float(COIN)
             elif k == 'supports' and isinstance(v, list):
-                obj[k] = [{'txid': txid, 'nout': nout, 'amount': Decimal(amount) / COIN}
+                obj[k] = [{'txid': txid, 'nout': nout, 'amount': float(amount) / float(COIN)}
                           for (txid, nout, amount) in v]
             elif isinstance(v, (list, dict)):
                 obj[k] = format_amount_value(v)
@@ -241,7 +239,7 @@ class Commands(object):
         l = copy.deepcopy(self.wallet.get_spendable_coins(exclude_frozen=False))
         for i in l:
             v = i["value"]
-            i["value"] = Decimal(v) / COIN if v is not None else None
+            i["value"] = float(v) / float(COIN) if v is not None else None
         return l
 
     @command('n')
@@ -609,7 +607,7 @@ class Commands(object):
                 'timestamp': timestamp,
                 'date': "%16s" % time_str,
                 'label': label,
-                'value': Decimal(value) / COIN if value is not None else None,
+                'value': float(value) / float(COIN) if value is not None else None,
                 'confirmations': conf}
             )
         return out
@@ -750,7 +748,7 @@ class Commands(object):
         if 'height' in claim_result and claim_result['height'] is None:
             claim_result['height'] = -1
 
-        if 'amount' in claim_result and type(claim_result['amount']) is not Decimal:
+        if 'amount' in claim_result and not isinstance(claim_result['amount'], float):
             claim_result = format_amount_value(claim_result)
 
         return claim_result
@@ -786,8 +784,8 @@ class Commands(object):
                 'claim_id': claim_id,
                 'txid': txid,
                 'nout': n,
-                'amount': Decimal(amount) / COIN,
-                'effective_amount': Decimal(effective_amount) / COIN,
+                'amount': float(amount) / float(COIN),
+                'effective_amount': float(effective_amount) / float(COIN),
                 'height': height,
                 'depth': depth,
                 'claim_sequence': claim_sequence,
@@ -798,7 +796,7 @@ class Commands(object):
 
         def _parse_proof_result(name, result):
             support_amount = sum(samount for stxid, sn, samount in result['supports'])
-            supports = [{'txid': stxid, 'nout': snout, 'amount': Decimal(samount) / COIN}
+            supports = [{'txid': stxid, 'nout': snout, 'amount': float(samount) / float(COIN)}
                         for (stxid, snout, samount) in result['supports']]
             if 'txhash' in result['proof'] and 'nOut' in result['proof']:
                 if 'transaction' in result:
