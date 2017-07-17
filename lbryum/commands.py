@@ -108,17 +108,6 @@ class Commands(object):
         self.new_password = new_password
         self.contacts = Contacts(self.config)
 
-    def _run(self, method, args, password_getter):
-        cmd = known_commands[method]
-        if cmd.requires_password and self.wallet.use_encryption:
-            self._password = apply(password_getter, ())
-        f = getattr(self, method)
-        result = f(*args)
-        self._password = None
-        if self._callback:
-            apply(self._callback, ())
-        return result
-
     @command('')
     def commands(self):
         """List of commands"""
