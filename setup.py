@@ -19,6 +19,7 @@ requires = [
     'appdirs',
     'protobuf',
     'jsonschema',
+    'keyring==10.4.0',
     'lbryschema==0.0.15rc2',
 ]
 
