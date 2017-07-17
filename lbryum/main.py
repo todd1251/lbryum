@@ -4,7 +4,7 @@ import os
 import sys
 
 import requests
-from lbryum.commands import Commands, config_variables, get_parser, known_commands
+from lbryum.commands import Commands, config_variables, get_parser
 from lbryum.daemon import Daemon, get_daemon
 from lbryum.network import Network, SimpleConfig
 from lbryum.util import json_decode
@@ -100,7 +100,7 @@ def run_non_RPC(config):
 def init_cmdline(config_options):
     config = SimpleConfig(config_options)
     cmdname = config.get('cmd')
-    cmd = known_commands[cmdname]
+    cmd = Commands.known_commands[cmdname]
 
     if cmdname == 'signtransaction' and config.get('privkey'):
         cmd.requires_wallet = False
@@ -154,7 +154,7 @@ def init_cmdline(config_options):
 
 def run_offline_command(config, config_options):
     cmdname = config.get('cmd')
-    cmd = known_commands[cmdname]
+    cmd = Commands.known_commands[cmdname]
     storage = WalletStorage(config.get_wallet_path())
     wallet = Wallet(storage) if cmd.requires_wallet else None
     # check password
@@ -188,27 +188,6 @@ def main():
     # make sure that certificates are here
     assert os.path.exists(requests.utils.DEFAULT_CA_BUNDLE_PATH)
 
-    # on osx, delete Process Serial Number arg generated for apps launched in Finder
-    sys.argv = filter(lambda x: not x.startswith('-psn'), sys.argv)
-
-    # old 'help' syntax
-    if len(sys.argv) > 1 and sys.argv[1] == 'help':
-        sys.argv.remove('help')
-        sys.argv.append('-h')
-
-    # read arguments from stdin pipe and prompt
-    for i, arg in enumerate(sys.argv):
-        if arg == '-':
-            if not sys.stdin.isatty():
-                sys.argv[i] = sys.stdin.read()
-                break
-            else:
-                raise BaseException('Cannot get argument from stdin')
-        elif arg == '?':
-            sys.argv[i] = raw_input("Enter argument:")
-        elif arg == ':':
-            sys.argv[i] = prompt_password('Enter argument (will not echo):', False)
-
     # parse command line
     parser = get_parser()
     args = parser.parse_args()
@@ -229,7 +208,6 @@ def main():
             config_options.pop(k)
     if config_options.get('server'):
         config_options['auto_connect'] = False
-
     config = SimpleConfig(config_options)
     cmdname = config.get('cmd')
 
@@ -269,20 +247,18 @@ def main():
             else:
                 print "syntax: lbryum daemon <start|status|stop>"
                 sys.exit(1)
-
     else:
         # command line
         init_cmdline(config_options)
         if server is not None:
             result = server.run_cmdline(config_options)
         else:
-            cmd = known_commands[cmdname]
+            cmd = Commands.known_commands[cmdname]
             if cmd.requires_network:
                 print "Network daemon is not running. Try 'lbryum daemon start'"
                 sys.exit(1)
             else:
                 result = run_offline_command(config, config_options)
-
     print json.dumps(result, indent=2)
     sys.exit(0)
 

@@ -4,7 +4,7 @@ import os
 import jsonrpclib
 from jsonrpclib.SimpleJSONRPCServer import SimpleJSONRPCRequestHandler, SimpleJSONRPCServer
 
-from lbryum.commands import Commands, known_commands
+from lbryum.commands import Commands
 from lbryum.simple_config import SimpleConfig
 from lbryum.util import DaemonThread, json_decode
 from lbryum.wallet import Wallet, WalletStorage
@@ -56,7 +56,7 @@ class Daemon(DaemonThread):
         with open(lockfile(config), 'w') as f:
             f.write(repr(self.server.socket.getsockname()))
         self.server.timeout = 0.1
-        for cmdname in known_commands:
+        for cmdname in Commands.known_commands:
             self.server.register_function(getattr(self.cmd_runner, cmdname), cmdname)
         self.server.register_function(self.run_cmdline, 'run_cmdline')
         self.server.register_function(self.ping, 'ping')
@@ -121,7 +121,7 @@ class Daemon(DaemonThread):
     def run_cmdline(self, config_options):
         config = SimpleConfig(config_options)
         cmdname = config.get('cmd')
-        cmd = known_commands[cmdname]
+        cmd = Commands.known_commands[cmdname]
         path = config.get_wallet_path()
         wallet = self.load_wallet(path) if cmd.requires_wallet else None
         # arguments passed to function

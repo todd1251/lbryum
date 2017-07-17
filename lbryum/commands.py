@@ -8,7 +8,6 @@ import logging
 import sys
 import time
 from decimal import Decimal
-from functools import wraps
 
 from ecdsa import BadSignatureError
 
@@ -38,7 +37,6 @@ from lbryum.mnemonic import Mnemonic
 
 log = logging.getLogger(__name__)
 
-known_commands = {}
 ADDRESS_LENGTH = 25
 MAX_PAGE_SIZE = 500
 
@@ -60,42 +58,47 @@ def format_amount_value(obj):
     return obj
 
 
-class Command(object):
-    def __init__(self, func, s):
-        self.name = func.__name__
-        self.requires_network = 'n' in s
-        self.requires_wallet = 'w' in s
-        self.requires_password = 'p' in s
-        self.description = func.__doc__
-        self.help = self.description.split('.')[0] if self.description else None
-        varnames = func.func_code.co_varnames[1:func.func_code.co_argcount]
-        self.defaults = func.func_defaults
-        if self.defaults:
-            n = len(self.defaults)
-            self.params = list(varnames[:-n])
-            self.options = list(varnames[-n:])
-        else:
-            self.params = list(varnames)
-            self.options = []
-            self.defaults = []
-
-
 def command(s):
     def decorator(func):
-        global known_commands
-        name = func.__name__
-        known_commands[name] = Command(func, s)
-
-        @wraps(func)
-        def func_wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-
-        return func_wrapper
-
+        func.name = func.__name__
+        func.requires_network = 'n' in s
+        func.requires_wallet = 'w' in s
+        func.requires_password = 'p' in s
+        func.description = func.__doc__
+        func.help = func.__doc__.split(".")[0] if func.__doc__ else None
+        varnames = func.func_code.co_varnames[1:func.func_code.co_argcount]
+        func.defaults = func.func_defaults
+        if func.defaults:
+            n = len(func.defaults)
+            func.params = list(varnames[:-n])
+            func.options = list(varnames[-n:])
+        else:
+            func.params = list(varnames)
+            func.options = []
+            func.defaults = []
+        func.is_command = True
+        return func
     return decorator
 
 
+class CommandType(type):
+    """
+    Metaclass used to register @command decorated methods to the `known_commands` class attribute
+    """
+
+    def __new__(mcs, *args, **kwargs):
+        cls = super(CommandType, mcs).__new__(mcs, *args, **kwargs)
+        cls.known_commands = {}
+        for name in dir(cls):
+            cmd = getattr(cls, name)
+            if hasattr(cmd, "is_command"):
+                cls.known_commands[cmd.__name__] = cmd
+        return cls
+
+
 class Commands(object):
+    __metaclass__ = CommandType
+
     def __init__(self, config, wallet, network, callback=None, password=None, new_password=None):
         self.config = config
         self.wallet = wallet
@@ -119,7 +122,7 @@ class Commands(object):
     @command('')
     def commands(self):
         """List of commands"""
-        return ' '.join(sorted(known_commands.keys()))
+        return ' '.join(sorted(self.known_commands.keys()))
 
     @command('')
     def create(self):
@@ -2691,8 +2694,8 @@ def get_parser():
     # parser_daemon.set_defaults(func=run_daemon)
     add_network_options(parser_daemon)
     # commands
-    for cmdname in sorted(known_commands.keys()):
-        cmd = known_commands[cmdname]
+    for cmdname in sorted(Commands.known_commands.keys()):
+        cmd = Commands.known_commands[cmdname]
         p = subparsers.add_parser(cmdname, parents=[parent_parser], help=cmd.help,
                                   description=cmd.description)
         # p.set_defaults(func=run_cmdline)
