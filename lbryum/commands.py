@@ -1115,10 +1115,9 @@ class Commands(object):
                                                  (block_hash,) + uris_to_send))
         result = {}
         for uri, resolution in response.iteritems():
-            response = self._handle_resolve_uri_response(parse_lbry_uri(str(uri)), block_header,
+            result[uri] = self._handle_resolve_uri_response(parse_lbry_uri(str(uri)), block_header,
                                                             raw, resolution, page=page,
                                                             page_size=page_size)
-            result[uri] = format_amount_value(response)
         return result
 
     @command('n')
