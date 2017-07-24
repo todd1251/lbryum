@@ -7,7 +7,15 @@ labeled as 2.7.1. Subsequent releases will follow
 [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
-### Added
+### Security
+  *
+  *
+
+### Fixed
+  *
+  *
+
+### Deprecated
   *
   *
 
@@ -15,17 +23,19 @@ labeled as 2.7.1. Subsequent releases will follow
   *
   *
 
-### Fixed
-  * Fixed getclaimbyoutpoint to return error if claim does not exist
-  *
-
-### Deprecated
+### Added
   *
   *
 
 ### Removed
   *
   *
+
+
+## [3.1.4] - 2017-07-24
+### Fixed
+ * Fixed getclaimbyoutpoint to return error if claim does not exist
+
 
 ## [3.1.3] - 2017-07-06
 ### Fixed
