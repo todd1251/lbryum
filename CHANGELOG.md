@@ -20,7 +20,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Changed
-  *
+  * Changed uri resolution to return the `claims_in_channel` count instead of the `claims_in_channel_pages` count
   *
 
 ### Added

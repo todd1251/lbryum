@@ -1010,10 +1010,9 @@ class Commands(object):
                 certificate = result['certificate']
                 if 'unverified_claims_in_channel' in resolution:
                     max_results = len(resolution['unverified_claims_in_channel'])
-                    max_pages = 1 + int((max_results - (max_results % page_size)) / page_size)
-                    result['claims_in_channel_pages'] = max_pages
+                    result['claims_in_channel'] = max_results
                 else:
-                    result['claims_in_channel_pages'] = 0
+                    result['claims_in_channel'] = 0
             else:
                 result['error'] = "claim not found"
                 result['success'] = False
