@@ -24,7 +24,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Added
-  *
+  * Added `sendwithsupport` to send a tip to the owner of a claim
   *
 
 ### Removed
