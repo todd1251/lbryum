@@ -12,7 +12,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Fixed
-  *
+  * Fix amount formatting bugs caused by extra calls to format_amount_value (https://github.com/lbryio/lbryum/issues/142)
   *
 
 ### Deprecated
