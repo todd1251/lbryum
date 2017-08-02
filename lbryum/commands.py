@@ -784,8 +784,8 @@ class Commands(object):
                 'claim_id': claim_id,
                 'txid': txid,
                 'nout': n,
-                'amount': float(amount) / float(COIN),
-                'effective_amount': float(effective_amount) / float(COIN),
+                'amount': amount,
+                'effective_amount': effective_amount,
                 'height': height,
                 'depth': depth,
                 'claim_sequence': claim_sequence,
@@ -795,9 +795,8 @@ class Commands(object):
             return r
 
         def _parse_proof_result(name, result):
-            support_amount = sum(samount for stxid, sn, samount in result['supports'])
-            supports = [{'txid': stxid, 'nout': snout, 'amount': float(samount) / float(COIN)}
-                        for (stxid, snout, samount) in result['supports']]
+            support_amount = sum([amt for (stxid, snout, amt) in result['supports']])
+            supports = result['supports']
             if 'txhash' in result['proof'] and 'nOut' in result['proof']:
                 if 'transaction' in result:
                     computed_txhash = Hash(result['transaction'].decode('hex'))[::-1].encode('hex')
@@ -948,7 +947,7 @@ class Commands(object):
                         formatted_claim = self.parse_and_validate_claim_result(claim, certificate)
                         formatted_claim['absolute_channel_position'] = claim_positions[
                             claim['claim_id']]
-                        yield format_amount_value(formatted_claim)
+                        yield formatted_claim
                     else:
                         log.warning("ignoring claim with name mismatch %s %s", claim['name'],
                                     claim['claim_id'])
@@ -1116,11 +1115,10 @@ class Commands(object):
         block_hash = self.network.blockchain.hash_header(block_header)
         response = self.network.synchronous_get(('blockchain.claimtrie.getvaluesforuris',
                                                  (block_hash,) + uris_to_send))
-        response = format_amount_value(response)
         result = {}
-        for uri, resolution in response.iteritems():
+        for uri in response:
             result[uri] = self._handle_resolve_uri_response(parse_lbry_uri(str(uri)), block_header,
-                                                            raw, resolution, page=page,
+                                                            raw, response[uri], page=page,
                                                             page_size=page_size)
         return result
 
@@ -1163,8 +1161,7 @@ class Commands(object):
         Return the claims which are in a transaction
         """
 
-        out = self.network.synchronous_get(('blockchain.claimtrie.getclaimsintx', [txid]))
-        result = format_amount_value(format_lbrycrd_keys(out, raw))
+        result = self.network.synchronous_get(('blockchain.claimtrie.getclaimsintx', [txid]))
         return self.parse_and_validate_claim_result(result, raw=raw)
 
     @command('n')
@@ -1175,10 +1172,9 @@ class Commands(object):
         dictionary where 'success' is False and 'error' is 'claim not found'
         """
 
-        out = self.network.synchronous_get(('blockchain.claimtrie.getclaimsintx', [txid]))
-        claims = format_amount_value(format_lbrycrd_keys(out, raw))
-        claim_not_found_out = {'success':False, 'error':'claim not found',
-                               'outpoint':'%s:%i'%(txid, nout)}
+        claims = self.network.synchronous_get(('blockchain.claimtrie.getclaimsintx', [txid]))
+        claim_not_found_out = {'success': False, 'error': 'claim not found',
+                               'outpoint': '%s:%i' % (txid, nout)}
         if claims is None:
             return claim_not_found_out
         for claim in claims:
@@ -1194,9 +1190,8 @@ class Commands(object):
 
         out = self.network.synchronous_get(('blockchain.claimtrie.getclaimsforname', [name]))
         result = format_lbrycrd_keys(out, raw)
-        claims = format_amount_value(result['claims'])
         claims_for_return = []
-        for claim in claims:
+        for claim in result['claims']:
             claims_for_return.append(self.parse_and_validate_claim_result(claim, raw=raw))
         result['claims'] = claims_for_return
         return result
@@ -1209,8 +1204,7 @@ class Commands(object):
 
         result = self.network.synchronous_get(('blockchain.claimtrie.getclaimssignedbyid',
                                                [claim_id]))
-        claims = format_amount_value(result)
-        return [self.parse_and_validate_claim_result(claim, raw=raw) for claim in claims]
+        return [self.parse_and_validate_claim_result(claim, raw=raw) for claim in result]
 
     @command('n')
     def getclaimsinchannel(self, uri, raw=False):
@@ -1232,8 +1226,7 @@ class Commands(object):
             claims = self.network.synchronous_get(('blockchain.claimtrie.getclaimssignedby',
                                                    [parsed.name]))
         if claims:
-            result = format_amount_value(claims)
-            return [self.parse_and_validate_claim_result(claim, raw=raw) for claim in result]
+            return [self.parse_and_validate_claim_result(claim, raw=raw) for claim in claims]
         return []
 
     @command('n')
@@ -1285,8 +1278,7 @@ class Commands(object):
         """
 
         result = self.network.synchronous_get(('blockchain.claimtrie.getclaimbyid', [claim_id]))
-        claims = format_amount_value(result)
-        return self.parse_and_validate_claim_result(claims, raw=raw)
+        return self.parse_and_validate_claim_result(result, raw=raw)
 
     @command('n')
     def getnthclaimforname(self, name, n, raw=False):
@@ -1296,8 +1288,7 @@ class Commands(object):
 
         result = self.network.synchronous_get(('blockchain.claimtrie.getnthclaimforname',
                                                [name, n]))
-        claims = format_amount_value(result)
-        return self.parse_and_validate_claim_result(claims, raw=raw)
+        return self.parse_and_validate_claim_result(result, raw=raw)
 
     @command('w')
     def getnameclaims(self, raw=False, include_abandoned=False, include_supports=True,
@@ -1308,9 +1299,8 @@ class Commands(object):
 
         result = self.wallet.get_name_claims(include_abandoned=include_abandoned,
                                              include_supports=include_supports)
-        claims = format_amount_value(result)
         name_claims = []
-        for claim in claims:
+        for claim in result:
             parsed = self.parse_and_validate_claim_result(claim, raw=raw)
             if claim_id is not None and parsed['claim_id'] != claim_id:
                 continue
@@ -1343,7 +1333,7 @@ class Commands(object):
                     certificate_claims.append(cert_result)
             except DecodeError:
                 pass
-        return format_amount_value(certificate_claims)
+        return certificate_claims
 
     def _calculate_fee(self, inputs, outputs, set_tx_fee):
         if set_tx_fee is not None:
