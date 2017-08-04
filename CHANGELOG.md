@@ -12,7 +12,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Fixed
-  * Fix amount formatting bugs caused by extra calls to format_amount_value (https://github.com/lbryio/lbryum/issues/142)
+  *
   *
 
 ### Deprecated
@@ -20,16 +20,27 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Changed
-  * Changed uri resolution to return the `claims_in_channel` count instead of the `claims_in_channel_pages` count
+  *
   *
 
 ### Added
-  * Added `sendwithsupport` to send a tip to the owner of a claim
+  *
   *
 
 ### Removed
   *
   *
+
+
+## [3.1.5] - 2017-08-04
+### Fixed
+ * Fix amount formatting bugs caused by extra calls to format_amount_value (https://github.com/lbryio/lbryum/issues/142)
+
+### Changed
+ * Changed uri resolution to return the `claims_in_channel` count instead of the `claims_in_channel_pages` count
+
+### Added
+ * Added `sendwithsupport` to send a tip to the owner of a claim
 
 
 ## [3.1.4] - 2017-07-24
