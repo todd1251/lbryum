@@ -42,56 +42,6 @@ known_commands = {}
 ADDRESS_LENGTH = 25
 MAX_PAGE_SIZE = 500
 
-
-# Format output from lbrycrd to have consistently
-# named ditionary keys
-def format_lbrycrd_keys(obj, raw_claim=None):
-    if isinstance(obj, dict):
-        for key, val in obj.iteritems():
-            new_key = key
-            if key == 'n' or key == 'nOut':
-                new_key = 'nout'
-            elif key == 'nAmount':
-                new_key = 'amount'
-            elif key == 'nEffectiveAmount':
-                new_key = 'effective_amount'
-            elif key == 'claimId':
-                new_key = 'claim_id'
-            elif key == 'nHeight':
-                new_key = 'height'
-            elif key == 'nValidAtHeight':
-                new_key = 'valid_at_height'
-            elif key == 'nLastTakeoverHeight':
-                new_key = 'last_takeover_height'
-            elif key == 'supports without claims':
-                new_key = 'supports_without_claims'
-            elif key == 'is controlling':
-                new_key = 'is_controlling'
-            elif key == 'in claim trie':
-                new_key = 'in_claim_trie'
-            elif key == 'value' and raw_claim:
-                if isinstance(val, (unicode, str)):
-                    try:
-                        val = val.decode('hex')
-                    except ValueError:
-                        pass
-                    val = val.encode('hex')
-                elif isinstance(val, dict) and raw_claim:
-                    encoded = ClaimDict.load_dict(val).serialized.encode('hex')
-                    val = encoded
-            elif key == 'claims':
-                val = format_lbrycrd_keys(val, raw_claim=raw_claim)
-            if new_key != key:
-                obj[new_key] = obj[key]
-                del obj[key]
-            if isinstance(val, (list, dict)):
-                obj[new_key] = format_lbrycrd_keys(val, raw_claim=raw_claim)
-
-    elif isinstance(obj, list):
-        obj = [format_lbrycrd_keys(o, raw_claim=raw_claim) for o in obj]
-    return obj
-
-
 # Format amount to be decimal encoded string
 # Format value to be hex encoded string
 def format_amount_value(obj):
@@ -1268,8 +1218,7 @@ class Commands(object):
         Return all claims and supports for a name
         """
 
-        out = self.network.synchronous_get(('blockchain.claimtrie.getclaimsforname', [name]))
-        result = format_lbrycrd_keys(out, raw)
+        result = self.network.synchronous_get(('blockchain.claimtrie.getclaimsforname', [name]))
         claims_for_return = []
         for claim in result['claims']:
             claims_for_return.append(self.parse_and_validate_claim_result(claim, raw=raw))
@@ -1401,7 +1350,7 @@ class Commands(object):
         certificate_claims = []
         name_claims = self.wallet.get_name_claims(include_abandoned=include_abandoned,
                                                   include_supports=False)
-        for claim in format_lbrycrd_keys(name_claims):
+        for claim in name_claims:
             try:
                 decoded = smart_decode(claim['value'])
                 if decoded.is_certificate:
