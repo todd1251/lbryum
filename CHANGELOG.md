@@ -13,7 +13,7 @@ labeled as 2.7.1. Subsequent releases will follow
 
 ### Fixed
   * Fix validation of address checksum and prefix when encoding and decoding
-  *
+  * Fix duplicate addreses due to race condition in wallet
 
 ### Deprecated
   *
