@@ -330,6 +330,10 @@ class Abstract_Wallet(PrintError):
                 self.accounts[k] = ImportedAccount(v)
             elif v.get('xpub'):
                 self.accounts[k] = BIP32_Account(v)
+                corrected = self.accounts[k].correct_pubkeys()
+                if corrected:
+                    self.save_accounts()
+
             elif v.get('pending'):
                 removed = True
             else:
