@@ -37,7 +37,7 @@ labeled as 2.7.1. Subsequent releases will follow
  * Fix race condition in create_new_address
 
 ### Changed
- * Bumped `lbryschema` requirement to 0.0.10 [see changelog](https://github.com/lbryschema/lbryschema/blob/master/CHANGELOG.md#0010---2017-08-22)
+ * Bumped `lbryschema` requirement to 0.0.10 [see changelog](https://github.com/lbryio/lbryschema/blob/master/CHANGELOG.md#0010---2017-08-22)
 
 ## [3.1.5] - 2017-08-04
 ### Fixed
