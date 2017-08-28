@@ -20,7 +20,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Changed
-  *
+  * `getvaluesforuri` now returns the claims in the reverse order(most recent first).
   *
 
 ### Added

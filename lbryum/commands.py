@@ -911,7 +911,7 @@ class Commands(object):
 
         abs_position = 0
 
-        for height in sorted(per_block_infos.keys()):
+        for height in sorted(per_block_infos.keys(), reverse=True):
             for claim_id, name in per_block_infos[height]:
                 names[claim_id] = name
                 absolute_position_index[claim_id] = abs_position
