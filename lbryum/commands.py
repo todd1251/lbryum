@@ -591,6 +591,60 @@ class Commands(object):
         return self.network.synchronous_get(('blockchain.transaction.broadcast', [str(tx)]))
 
     @command('wn')
+    def get_auxilary_info_tx(self, txid, include_tip_info=False):
+        """
+        Gets the additional information related to Txn history
+        """
+
+        aux_info = {
+        'support_info' : [],
+        'update_info' : [],
+        'claim_info' : []
+        }
+
+        tx = self.wallet.transactions[txid]
+        tx_outs = tx.outputs()
+
+        for nout, tx_out in enumerate(tx_outs):
+            if tx_out[0] & TYPE_SUPPORT:
+                is_tip = False
+                claim_name, claim_id = tx_out[1][0]
+                claim_id = encode_claim_id_hex(claim_id)
+
+                if include_tip_info:
+                    claim = self.getclaimbyid(claim_id)
+                    if claim['address'] == tx_out[1][1]:
+                        is_tip = True
+
+                aux_info['support_info'].append({
+                    'claim_name' : claim_name,
+                    'claim_id' : claim_id,
+                    'is_tip' : is_tip,
+                    'amount' : float(tx_out[2]) / float(COIN)
+                })
+
+            if tx_out[0] & TYPE_UPDATE:
+                claim_name, claim_id, claim_value = tx_out[1][0]
+                claim_id = encode_claim_id_hex(claim_id)
+                aux_info['update_info'].append({
+                    'claim_name' : claim_name,
+                    'claim_id' : claim_id,
+                    'amount' : float(tx_out[2]) / float(COIN)
+                })
+
+            if tx_out[0] & TYPE_CLAIM:
+                claim_name, claim_value = tx_out[1][0]
+                claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
+                claim_id = encode_claim_id_hex(claim_id)
+                aux_info['claim_info'].append({
+                    'claim_name' : claim_name,
+                    'claim_id' : claim_id,
+                    'amount' : float(tx_out[2]) / float(COIN)
+                })
+
+        return aux_info
+
+    @command('wn')
     def get_transaction_fee(self, txid):
         """
         Get the fee for a transaction by txid
@@ -618,37 +672,24 @@ class Commands(object):
         out = []
         for item in self.wallet.get_history():
             tx_hash, conf, value, timestamp, balance = item
-            tx = self.wallet.transactions[tx_hash]
+            aux_tx_info = self.get_auxilary_info_tx(tx_hash, include_tip_info)
 
             try:
                 time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
             except Exception:
                 time_str = "----"
-            label = self.wallet.get_label(tx_hash)
 
-            tip_info = []
-
-            for nout, tx_o in enumerate(tx.outputs()):
-                if include_tip_info and tx_o[0] & TYPE_SUPPORT:
-                    supported_name, supported_claim_id = tx_o[1][0]
-                    supported_claim_id = encode_claim_id_hex(supported_claim_id)
-                    supported_claim = self.getclaimbyid(supported_claim_id)
-                    if supported_claim['address'] == tx_o[1][1]:
-                        tip_info.append({
-                            'tipped_claim_id': supported_claim_id,
-                            'tipped_claim_name': supported_name
-                        })
             result = {
                 'txid': tx_hash,
                 'fee': self.get_transaction_fee(tx_hash),
                 'timestamp': timestamp,
                 'date': "%16s" % time_str,
-                'label': label,
                 'value': float(value) / float(COIN) if value is not None else None,
                 'confirmations': conf,
+                'support_info': aux_tx_info['support_info'],
+                'claim_info': aux_tx_info['claim_info'],
+                'update_info': aux_tx_info['update_info']
             }
-            if include_tip_info:
-                result['tip_info'] = tip_info
             out.append(result)
         return out
 
@@ -1330,7 +1371,7 @@ class Commands(object):
                                                [name, n]))
         return self.parse_and_validate_claim_result(result, raw=raw)
 
-    @command('w')
+    @command('wn')
     def getnameclaims(self, raw=False, include_abandoned=False, include_supports=True,
                       claim_id=None, txid=None, nout=None):
         """
