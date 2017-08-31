@@ -590,7 +590,6 @@ class Commands(object):
         tx = self._mktx(outputs, tx_fee, change_addr, domain, nocheck, unsigned)
         return self.network.synchronous_get(('blockchain.transaction.broadcast', [str(tx)]))
 
-    @command('wn')
     def get_auxilary_info_tx(self, txid, include_tip_info=False):
         """
         Gets the additional information related to Txn history
@@ -607,39 +606,41 @@ class Commands(object):
 
         for nout, tx_out in enumerate(tx_outs):
             if tx_out[0] & TYPE_SUPPORT:
-                is_tip = False
+                is_tip = None
                 claim_name, claim_id = tx_out[1][0]
                 claim_id = encode_claim_id_hex(claim_id)
 
                 if include_tip_info:
                     claim = self.getclaimbyid(claim_id)
-                    if claim['address'] == tx_out[1][1]:
-                        is_tip = True
+                    is_tip = claim['address'] == tx_out[1][1]
 
                 aux_info['support_info'].append({
                     'claim_name' : claim_name,
                     'claim_id' : claim_id,
                     'is_tip' : is_tip,
-                    'amount' : float(tx_out[2]) / float(COIN)
+                    'nout' : nout,
+                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
                 })
 
-            if tx_out[0] & TYPE_UPDATE:
+            elif tx_out[0] & TYPE_UPDATE:
                 claim_name, claim_id, claim_value = tx_out[1][0]
                 claim_id = encode_claim_id_hex(claim_id)
                 aux_info['update_info'].append({
                     'claim_name' : claim_name,
                     'claim_id' : claim_id,
-                    'amount' : float(tx_out[2]) / float(COIN)
+                    'nout' : nout,
+                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
                 })
 
-            if tx_out[0] & TYPE_CLAIM:
+            elif tx_out[0] & TYPE_CLAIM:
                 claim_name, claim_value = tx_out[1][0]
                 claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
                 claim_id = encode_claim_id_hex(claim_id)
                 aux_info['claim_info'].append({
                     'claim_name' : claim_name,
                     'claim_id' : claim_id,
-                    'amount' : float(tx_out[2]) / float(COIN)
+                    'nout' : nout,
+                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
                 })
 
         return aux_info
@@ -685,11 +686,9 @@ class Commands(object):
                 'timestamp': timestamp,
                 'date': "%16s" % time_str,
                 'value': float(value) / float(COIN) if value is not None else None,
-                'confirmations': conf,
-                'support_info': aux_tx_info['support_info'],
-                'claim_info': aux_tx_info['claim_info'],
-                'update_info': aux_tx_info['update_info']
+                'confirmations': conf
             }
+            result.update(aux_tx_info)
             out.append(result)
         return out
 
