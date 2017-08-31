@@ -24,12 +24,13 @@ labeled as 2.7.1. Subsequent releases will follow
   * Moved Enumation and BCDataStream classes into their own files
 
 ### Added
+  * Added additional fields(support_info, update_info, claim_info) in tx history to support tipping.
   * Added `get_transaction_fee` command
   * Added `fee` field to the response for `history`
   * Added optional `include_tip_info` argument to `history`
 
 ### Removed
-  *
+  * Removed label from tx history
   *
 
 
