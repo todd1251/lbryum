@@ -4,7 +4,8 @@ import unittest
 from lbryum import claims
 from lbryum import commands
 from lbryum.hashing import Hash, PoWHash
-from lbryum.lbrycrd import claim_id_hash, bc_address_to_hash_160, hash_160_to_bc_address
+from lbryum.lbrycrd import (claim_id_hash, bc_address_to_hash_160, hash_160_to_bc_address,
+                            is_address)
 from lbryum.util import rev_hex
 
 
@@ -110,3 +111,10 @@ class Test_Lbry(unittest.TestCase):
         with self.assertRaises(Exception):
             bc_address_to_hash_160("bW5PZEvEBNPQRVhwpYXSjabFgbSw1oaHR")
             bc_address_to_hash_160("aW5PZEvEBNPQRVhwpYXSjabFgbSw1oaHyR")
+
+    def test_is_address(self):
+        self.assertFalse(is_address("something wrong"))
+        self.assertFalse(is_address("123"))
+        self.assertFalse(is_address("bYqee1aDgxA5oB4qr3PzjQ5xXzwGuyymH"))
+        self.assertTrue(is_address("bYqee1aDgxA5oB4qr3PzjQ5xXzwGuyymH6"))
+        self.assertTrue(is_address("bPJ9RPtyJSW9k5fGtJaxt3UhzUZSi59X9m"))
