@@ -4,7 +4,7 @@ import unittest
 from lbryum import claims
 from lbryum import commands
 from lbryum.hashing import Hash, PoWHash
-from lbryum.lbrycrd import claim_id_hash
+from lbryum.lbrycrd import claim_id_hash, bc_address_to_hash_160, hash_160_to_bc_address
 from lbryum.util import rev_hex
 
 
@@ -91,3 +91,22 @@ class Test_Lbry(unittest.TestCase):
         claim_id = "a438fc7701e10e0e5c41d7a342be1190d9bed57b"
         out = claim_id_hash(rev_hex(txid).decode('hex'), nout)
         self.assertEqual(claim_id, rev_hex(out.encode('hex')))
+
+    def test_address_encode_decode(self):
+        valid_addr_hex = "be482f953ed0feda4fc5c4d012681b6119274993"
+        self.assertEqual(hash_160_to_bc_address(valid_addr_hex.decode('hex'), 0),
+                         "bW5PZEvEBNPQRVhwpYXSjabFgbSw1oaHyR")
+        self.assertEqual(bc_address_to_hash_160("bW5PZEvEBNPQRVhwpYXSjabFgbSw1oaHyR"),
+                         (0, "\xbeH/\x95>\xd0\xfe\xdaO\xc5\xc4\xd0\x12h\x1ba\x19'I\x93"))
+
+    def test_address_encode_prefix_error(self):
+        valid_addr_hex = "be482f953ed0feda4fc5c4d012681b6119274993"
+        with self.assertRaises(Exception):
+            hash_160_to_bc_address(valid_addr_hex.decode('hex'), -1)
+            hash_160_to_bc_address(valid_addr_hex.decode('hex'), 2)
+            hash_160_to_bc_address(valid_addr_hex.decode('hex'), 2000)
+
+    def test_address_decode_error(self):
+        with self.assertRaises(Exception):
+            bc_address_to_hash_160("bW5PZEvEBNPQRVhwpYXSjabFgbSw1oaHR")
+            bc_address_to_hash_160("aW5PZEvEBNPQRVhwpYXSjabFgbSw1oaHyR")
