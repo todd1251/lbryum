@@ -1,3 +1,5 @@
+import logging
+
 from lbryum.util import rev_hex, int_to_hex, is_extended_pubkey
 from lbryum.hashing import hash_160
 from lbryum.base import DecodeBase58Check, EncodeBase58Check
@@ -7,14 +9,18 @@ from lbryum.lbrycrd import public_key_to_bc_address, deserialize_xkey, bip32_pub
 from lbryum.lbrycrd import CKD_pub, bip32_private_key
 from lbryum.errors import InvalidPassword
 
+log = logging.getLogger(__name__)
 
 class Account(object):
     def __init__(self, v):
         self.receiving_pubkeys = v.get('receiving', [])
         self.change_pubkeys = v.get('change', [])
+
         # addresses will not be stored on disk
         self.receiving_addresses = map(self.pubkeys_to_address, self.receiving_pubkeys)
         self.change_addresses = map(self.pubkeys_to_address, self.change_pubkeys)
+
+
 
     def dump(self):
         return {'receiving': self.receiving_pubkeys, 'change': self.change_pubkeys}
@@ -141,6 +147,58 @@ class BIP32_Account(Account):
         self.xpub = v['xpub']
         self.xpub_receive = None
         self.xpub_change = None
+
+    def correct_pubkeys(self):
+        """
+        Wallets could have duplicate pubkeys and skip pubkey generation
+        for the nth sequence, due to a race condition bug
+        (see https://github.com/lbryio/lbryum/pull/147)
+
+        return True if problem was found and corrected,
+        retun False if no problem was found
+        """
+        correction_made = False
+        if self._check_pubkeys(self.receiving_pubkeys, False):
+            self.receiving_pubkeys = self._correct_pubkeys(self.receiving_pubkeys, False)
+            correction_made = True
+        if self._check_pubkeys(self.change_pubkeys, True):
+            self.change_pubkeys = self._correct_pubkeys(self.change_pubkeys, True)
+            correction_made = True
+        return correction_made
+
+    def _check_pubkeys(self, pubkeys, for_change):
+        pubkeys_set = set(pubkeys)
+        duplicate_key_found = len(pubkeys_set) != len(pubkeys)
+        if duplicate_key_found:
+            log.warn("Duplicate key found, will correct, this may take a minute")
+
+        expected_last_pubkey = self.derive_pubkeys(for_change, len(pubkeys)-1)
+        last_pubkey_incorrect = expected_last_pubkey != pubkeys[-1]
+        if last_pubkey_incorrect:
+            log.warn("Last pubkey was not as expected, will correct, this make take a minute")
+        return duplicate_key_found or last_pubkey_incorrect
+
+    def _correct_pubkeys(self, pubkeys, for_change):
+        """
+        Try to re-derive the nth pubkeys and add them
+        in order, while making sure every pubkey gets added
+        """
+        pubkeys_set = set(pubkeys)
+        corrected_pubkeys = []
+        index = 0
+        while len(pubkeys_set) > 0:
+            expected_pubkey = self.derive_pubkeys(for_change, index)
+            if expected_pubkey in pubkeys_set:
+                pubkeys_set.remove(expected_pubkey)
+            corrected_pubkeys.append(expected_pubkey)
+            log.debug("Appending pubkey:%s", expected_pubkey)
+            if index >= len(pubkeys) or expected_pubkey != pubkeys[index]:
+                log.debug("Correction made, from %s to %s", expected_pubkey, pubkeys[index])
+            index += 1
+            if index > len(pubkeys) + 100:
+                raise Exception(
+                    "Critical error found when correcting public key, exceeded max key generation")
+        return corrected_pubkeys
 
     def dump(self):
         d = Account.dump(self)

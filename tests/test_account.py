@@ -1,12 +1,12 @@
 import unittest
-
+import copy
 from lbryum import account
 from lbryum import wallet
 
 
 class Test_Account(unittest.TestCase):
-    def test_bip32_account(self):
-        v = {
+    def setUp(self):
+        self.v = {
             'change': [
                 '02d2967089cbcecf308f133cdec7e97eeeb53a1d8d76fc3656eaa55dac67b7694c',
                 '023a667b846434d35fa76d5fe452c11a74504f5d6d551ad7fb9fe837041c3ef1de',
@@ -39,11 +39,14 @@ class Test_Account(unittest.TestCase):
             ],
             'xpub': 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY4ZmQPQeW5CK6fiwx2EH6VxQab3zwDzZVWVApDSVNh'
         }
-        a = account.BIP32_Account(v)
-        self.assertEquals(a.dump(), v)
-        self.assertEquals(a.get_master_pubkeys(), [v['xpub']])
+
+    def test_bip32_account(self):
+
+        a = account.BIP32_Account(self.v)
+        self.assertEquals(a.dump(), self.v)
+        self.assertEquals(a.get_master_pubkeys(), [self.v['xpub']])
         self.assertEquals(a.first_address(),
-                          ('bScaWvgzAzFXzAcVgDDARfo9RFhdrm4pVc', v['receiving'][0]))
+                          ('bScaWvgzAzFXzAcVgDDARfo9RFhdrm4pVc', self.v['receiving'][0]))
 
         xprv = 'xprv9s21ZrQH143K2eGb6FZ81nLW44cyy7mrAiqg4VB4pQKDrmizjc1pSuynnpeiaMPdZxvrfvdBi5oqFi9hmsV7MrsVquKkruQ7TJPCfVuPSdw'
         storage = dict(
@@ -58,7 +61,7 @@ class Test_Account(unittest.TestCase):
         for for_change in [0, 1]:
             for n in range(6):
                 label = ['receiving', 'change'][for_change]
-                expected = v[label][n]
+                expected = self.v[label][n]
                 self.assertEquals(expected, a.derive_pubkey_from_xpub(a.xpub, for_change, n))
                 self.assertEquals(expected, a.get_pubkey_from_xpub(a.xpub, for_change, n))
                 self.assertEquals(expected, a.derive_pubkeys(for_change, n))
@@ -67,3 +70,36 @@ class Test_Account(unittest.TestCase):
                 xpub, seq = a.parse_xpubkey(pubkey)
                 self.assertEquals(xpub, a.xpub)
                 self.assertEquals(seq, [for_change, n])
+
+
+    def test_bip32_account_correction(self):
+        # if there is no problem, correct_pubkeys
+        # should return False
+        a = account.BIP32_Account(self.v)
+        out = a.correct_pubkeys()
+        self.assertFalse(out)
+
+        # add duplicate key to end of change
+        mod_v = copy.deepcopy(self.v)
+        mod_v['change'].append(mod_v['change'][-1])
+
+        a = account.BIP32_Account(mod_v)
+        self.assertNotEqual(self.v['change'], a.change_pubkeys)
+        out = a.correct_pubkeys()
+        self.assertTrue(out)
+
+        self.assertEqual(self.v['change'], a.change_pubkeys)
+        self.assertEqual(self.v['receiving'], a.receiving_pubkeys)
+
+        # replace receiving[2] with receiving[1]
+        # receiving[2] should be re generated
+        mod_v = copy.deepcopy(self.v)
+        mod_v['receiving'][2] = mod_v['receiving'][1]
+        a = account.BIP32_Account(mod_v)
+
+        self.assertNotEqual(self.v['receiving'], a.receiving_pubkeys)
+        out = a.correct_pubkeys()
+        self.assertTrue(out)
+
+        self.assertEqual(self.v['change'], a.change_pubkeys)
+        self.assertEqual(self.v['receiving'], a.receiving_pubkeys)
