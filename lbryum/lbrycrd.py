@@ -160,6 +160,8 @@ def hash_160_to_bc_address(h160, addrtype=0):
         c = chr(PUBKEY_ADDRESS[1])
     elif addrtype == SCRIPT_ADDRESS[0]:
         c = chr(SCRIPT_ADDRESS[1])
+    else:
+        raise Exception("Invalid address prefix")
 
     vh160 = c + h160
     h = Hash(vh160)
@@ -169,10 +171,15 @@ def hash_160_to_bc_address(h160, addrtype=0):
 
 def bc_address_to_hash_160(addr):
     bytes = base_decode(addr, 25, base=58)
+    addr_without_checksum, addr_checksum = bytes[:21], bytes[21:]
+    if Hash(addr_without_checksum)[:4] != addr_checksum:
+        raise Exception("Invalid address checksum")
     if bytes[0] == chr(PUBKEY_ADDRESS[1]):
         return PUBKEY_ADDRESS[0], bytes[1:21]
     elif bytes[0] == chr(SCRIPT_ADDRESS[1]):
         return SCRIPT_ADDRESS[0], bytes[1:21]
+    else:
+        raise Exception("Invalid address prefix")
 
 
 def PrivKeyToSecret(privkey):
