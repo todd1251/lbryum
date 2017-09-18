@@ -12,26 +12,44 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Fixed
-  * Fix validation of address checksum and prefix when encoding and decoding
-  * Fix duplicate addreses due to race condition in wallet
+  *
+  *
 
 ### Deprecated
   *
   *
 
 ### Changed
-  * `getvaluesforuri` now returns the claims in the reverse order(most recent first).
-  * Moved Enumation and BCDataStream classes into their own files
+  *
+  *
 
 ### Added
-  * Added additional fields(support_info, update_info, claim_info) in tx history to support tipping.
-  * Added `get_transaction_fee` command
-  * Added `fee` field to the response for `history`
-  * Added optional `include_tip_info` argument to `history`
+  *
+  *
 
 ### Removed
-  * Removed label from tx history
   *
+  *
+
+
+## [3.1.7] - 2017-09-18
+### Fixed
+ * Fix validation of address checksum and prefix when encoding and decoding
+ * Fix duplicate addreses due to race condition in wallet
+
+### Changed
+ * Bumped `lbryschema` requirement to 0.0.11 [see changelog](https://github.com/lbryio/lbryschema/blob/master/CHANGELOG.md#0011---2017-09-18)
+ * `getvaluesforuri` now returns the claims in the reverse order(most recent first).
+ * Moved Enumation and BCDataStream classes into their own files
+
+### Added
+ * Added additional fields(support_info, update_info, claim_info) in tx history to support tipping.
+ * Added `get_transaction_fee` command
+ * Added `fee` field to the response for `history`
+ * Added optional `include_tip_info` argument to `history`
+
+### Removed
+ * Removed label from tx history
 
 
 ## [3.1.6] - 2017-08-22
