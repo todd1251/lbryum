@@ -540,62 +540,79 @@ class Commands(object):
         tx = self._mktx(outputs, tx_fee, change_addr, domain, nocheck, unsigned)
         return self.network.synchronous_get(('blockchain.transaction.broadcast', [str(tx)]))
 
-    def get_auxilary_info_tx(self, txid, include_tip_info=False):
-        """
-        Gets the additional information related to Txn history
-        """
+    @command('w')
+    def claimhistory(self):
+        def get_info_dict(name, claim_id, nout, txo):
+            return {
+                'claim_name': name,
+                'claim_id': claim_id,
+                'nout': nout,
+                'amount': float(Decimal(txo[2]) / Decimal(COIN)),
+                'address': txo[1][1]
+            }
 
-        aux_info = {
-        'support_info' : [],
-        'update_info' : [],
-        'claim_info' : []
-        }
+        history = self.history()
+        results = []
 
-        tx = self.wallet.transactions[txid]
-        tx_outs = tx.outputs()
+        for history_result in history:
+            txid = history_result['txid']
+            tx = self.wallet.transactions[txid]
+            tx_outs = tx.outputs()
 
-        for nout, tx_out in enumerate(tx_outs):
-            if tx_out[0] & TYPE_SUPPORT:
-                is_tip = None
-                claim_name, claim_id = tx_out[1][0]
-                claim_id = encode_claim_id_hex(claim_id)
+            support_infos = []
+            update_infos = []
+            claim_infos = []
 
-                if include_tip_info:
-                    claim = self.getclaimbyid(claim_id)
-                    is_tip = claim['address'] == tx_out[1][1]
+            for nout, tx_out in enumerate(tx_outs):
+                if tx_out[0] & TYPE_SUPPORT:
+                    claim_name, claim_id = tx_out[1][0]
+                    claim_id = encode_claim_id_hex(claim_id)
+                    support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
+                elif tx_out[0] & TYPE_UPDATE:
+                    claim_name, claim_id, claim_value = tx_out[1][0]
+                    claim_id = encode_claim_id_hex(claim_id)
+                    update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
+                elif tx_out[0] & TYPE_CLAIM:
+                    claim_name, claim_value = tx_out[1][0]
+                    claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
+                    claim_id = encode_claim_id_hex(claim_id)
+                    claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
 
-                aux_info['support_info'].append({
-                    'claim_name' : claim_name,
-                    'claim_id' : claim_id,
-                    'is_tip' : is_tip,
-                    'nout' : nout,
-                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
-                })
-
-            elif tx_out[0] & TYPE_UPDATE:
-                claim_name, claim_id, claim_value = tx_out[1][0]
-                claim_id = encode_claim_id_hex(claim_id)
-                aux_info['update_info'].append({
-                    'claim_name' : claim_name,
-                    'claim_id' : claim_id,
-                    'nout' : nout,
-                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
-                })
-
-            elif tx_out[0] & TYPE_CLAIM:
-                claim_name, claim_value = tx_out[1][0]
-                claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
-                claim_id = encode_claim_id_hex(claim_id)
-                aux_info['claim_info'].append({
-                    'claim_name' : claim_name,
-                    'claim_id' : claim_id,
-                    'nout' : nout,
-                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
-                })
-
-        return aux_info
+            result = history_result
+            result['support_info'] = support_infos
+            result['update_info'] = update_infos
+            result['claim_info'] = claim_infos
+            results.append(result)
+        return results
 
     @command('wn')
+    def tiphistory(self):
+        claim_ids_to_check = []
+        results = []
+
+        claim_history = self.claimhistory()
+        for h in claim_history:
+            for supported in h['support_info']:
+                claim_ids_to_check.append(supported['claim_id'])
+
+        claims = self.getclaimsbyids(claim_ids_to_check)
+
+        for h in claim_history:
+            support_info = []
+            for supported in h['support_info']:
+                claim_ids_to_check.append(supported['claim_id'])
+                claim = claims.get(supported['claim_id'])
+                if claim:
+                    if supported['address'] == claim['address']:
+                        supported['is_tip'] = True
+                    else:
+                        supported['is_tip'] = False
+                    support_info.append(supported)
+            h['support_info'] = support_info
+            results.append(h)
+
+        return results
+
     def get_transaction_fee(self, txid):
         """
         Get the fee for a transaction by txid
@@ -617,14 +634,12 @@ class Commands(object):
             fee += spent_tx.outputs()[tx_in['prevout_n']][2]
         return float(Decimal(fee - tx.output_value()) / Decimal(COIN))
 
-    @command('wn')
-    def history(self, include_tip_info=False):
+    @command('w')
+    def history(self):
         """Wallet history. Returns the transaction history of your wallet."""
-        out = []
-        for item in self.wallet.get_history():
-            tx_hash, conf, value, timestamp, balance = item
-            aux_tx_info = self.get_auxilary_info_tx(tx_hash, include_tip_info)
 
+        out = []
+        for tx_hash, confirms, value, timestamp, balance in self.wallet.get_history():
             try:
                 time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
             except Exception:
@@ -636,9 +651,8 @@ class Commands(object):
                 'timestamp': timestamp,
                 'date': "%16s" % time_str,
                 'value': float(value) / float(COIN) if value is not None else None,
-                'confirmations': conf
+                'confirmations': confirms
             }
-            result.update(aux_tx_info)
             out.append(result)
         return out
 
