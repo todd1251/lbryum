@@ -21,7 +21,7 @@ from lbryschema.uri import URIParseError, parse_lbry_uri
 from lbryum import __version__
 from lbryum.contacts import Contacts
 from lbryum.constants import COIN, TYPE_ADDRESS, TYPE_CLAIM, TYPE_SUPPORT, TYPE_UPDATE
-from lbryum.constants import RECOMMENDED_CLAIMTRIE_HASH_CONFIRMS
+from lbryum.constants import RECOMMENDED_CLAIMTRIE_HASH_CONFIRMS, MAX_BATCH_QUERY_SIZE
 from lbryum.hashing import Hash, hash_160
 from lbryum.claims import verify_proof
 from lbryum.lbrycrd import hash_160_to_bc_address, is_address, decode_claim_id_hex
@@ -783,6 +783,57 @@ class Commands(object):
 
         return claim_result
 
+    def offline_parse_and_validate_claim_result(self, claim_result, certificate, raw=False):
+        """
+        Parse and validate a claim result from lbryum server
+
+        Unlike  parse_and_validate_claim_result, this function does not
+        send any queries to lbryum server. In the other function this
+        is done to retrieve the certificate claim referenced by the signed
+        claim.
+
+        :param claim_result: a claim result from lbryum server
+        :param certificate: a certificate result from lbryum server | None
+        :param raw: bool
+        :return: formatted claim result
+        """
+
+        # TODO: remove the old parse_and_validate_claim_result function
+
+        if not claim_result or 'value' not in claim_result:
+            return claim_result
+
+        claim_result['decoded_claim'] = False
+        decoded = None
+
+        if not raw:
+            claim_value = claim_result['value']
+            try:
+                decoded = smart_decode(claim_value)
+                claim_result['value'] = decoded.claim_dict
+                claim_result['decoded_claim'] = True
+            except DecodeError:
+                pass
+
+        if decoded:
+            claim_result['has_signature'] = False
+            if decoded.has_signature:
+                claim_result['has_signature'] = True
+                claim_result['signature_is_valid'] = False
+                validated, channel_name = self.validate_claim_signature_and_get_channel_name(
+                    decoded, certificate, claim_result['address'])
+                claim_result['channel_name'] = channel_name
+                if validated:
+                    claim_result['signature_is_valid'] = True
+
+        if 'height' in claim_result and claim_result['height'] is None:
+            claim_result['height'] = -1
+
+        if 'amount' in claim_result and not isinstance(claim_result['amount'], float):
+            claim_result = format_amount_value(claim_result)
+
+        return claim_result
+
     @staticmethod
     def _validate_signed_claim(claim, claim_address, certificate):
         assert claim.has_signature, "Claim is not signed"
@@ -1308,6 +1359,54 @@ class Commands(object):
 
         result = self.network.synchronous_get(('blockchain.claimtrie.getclaimbyid', [claim_id]))
         return self.parse_and_validate_claim_result(result, raw=raw)
+
+    @command('n')
+    def getclaimsbyids(self, claim_ids, raw=False):
+        """
+        Get a dictionary of claim results keyed by claim id for a list of claim ids
+        """
+
+        def iter_certificate_ids(claim_results):
+            for claim_id, claim_result in claim_results.iteritems():
+                if claim_result and 'value' in claim_result:
+                    try:
+                        decoded = smart_decode(claim_result['value'])
+                        if decoded.has_signature:
+                            yield claim_id, decoded.certificate_id
+                    except DecodeError:
+                        pass
+
+        def iter_certificate_claims(certificate_results):
+            for claim_id, claim_result in certificate_results.iteritems():
+                yield claim_id, self.offline_parse_and_validate_claim_result(claim_result, None,
+                                                                             raw)
+
+        def iter_resolve_and_parse(to_query):
+            claim_results = self.network.synchronous_get(("blockchain.claimtrie.getclaimsbyids",
+                                                          to_query))
+            certificate_infos = dict(iter_certificate_ids(claim_results))
+
+            cert_results = self.network.synchronous_get(("blockchain.claimtrie.getclaimsbyids",
+                                                         certificate_infos.values()))
+            certificates = dict(iter_certificate_claims(cert_results))
+
+            for claim_id, claim_result in claim_results.iteritems():
+                if claim_id in certificate_infos:
+                    certificate_id = certificate_infos[claim_id]
+                    certificate = certificates[certificate_id]
+                else:
+                    certificate = None
+                yield claim_id, self.offline_parse_and_validate_claim_result(claim_result,
+                                                                             certificate, raw)
+
+        def iter_queries(remaining):
+            while remaining:
+                query = remaining[:MAX_BATCH_QUERY_SIZE]
+                remaining = remaining[MAX_BATCH_QUERY_SIZE:]
+                for claim_id, claim in iter_resolve_and_parse(query):
+                    yield claim_id, claim
+
+        return dict(iter_queries(claim_ids))
 
     @command('n')
     def getnthclaimforname(self, name, n, raw=False):
