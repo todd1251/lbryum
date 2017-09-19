@@ -613,7 +613,8 @@ class Commands(object):
 
         return results
 
-    def get_transaction_fee(self, txid):
+    @command('w')
+    def transactionfee(self, txid):
         """
         Get the fee for a transaction by txid
         """
@@ -621,17 +622,19 @@ class Commands(object):
         if txid in self.wallet.transactions:
             tx = self.wallet.transactions[txid]
         else:
-            tx = Transaction(self.network.synchronous_get(('blockchain.transaction.get', [txid])))
+            return {'error': 'transaction is not in local history'}
         fee = 0
 
         for tx_in in tx.inputs():
             # add up the amounts for the txos used as inputs
             if tx_in['prevout_hash'] in self.wallet.transactions:
                 spent_tx = self.wallet.transactions[tx_in['prevout_hash']]
+                fee += spent_tx.outputs()[tx_in['prevout_n']][2]
             else:
-                spent_tx = Transaction(self.network.synchronous_get(('blockchain.transaction.get',
-                                                                     [tx_in['prevout_hash']])))
-            fee += spent_tx.outputs()[tx_in['prevout_n']][2]
+                # TODO: look up and save the transaction
+                return float(Decimal(tx.fee_for_size(self.wallet.relayfee(),
+                                                     self.wallet.fee_per_kb(self.config),
+                                                     tx.estimated_size())) / Decimal(COIN))
         return float(Decimal(fee - tx.output_value()) / Decimal(COIN))
 
     @command('w')
@@ -647,7 +650,7 @@ class Commands(object):
 
             result = {
                 'txid': tx_hash,
-                'fee': self.get_transaction_fee(tx_hash),
+                'fee': self.transactionfee(tx_hash),
                 'timestamp': timestamp,
                 'date': "%16s" % time_str,
                 'value': float(value) / float(COIN) if value is not None else None,
