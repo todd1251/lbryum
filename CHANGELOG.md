@@ -20,12 +20,15 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Changed
-  *
-  *
+  * Removed `include_tip_info` argument from `history`
+  * Changed tip history to batch the claim queries it makes to improve performance
+  * Changed `history` to work offline
+  * Renamed `get_transaction_fee` to `transactionfee`
 
 ### Added
-  *
-  *
+  * Added `claimhistory` command
+  * Added `tiphistory` command
+  * Added `getclaimsbyids` with better batching of requests
 
 ### Removed
   *
