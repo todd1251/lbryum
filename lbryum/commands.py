@@ -21,7 +21,7 @@ from lbryschema.uri import URIParseError, parse_lbry_uri
 from lbryum import __version__
 from lbryum.contacts import Contacts
 from lbryum.constants import COIN, TYPE_ADDRESS, TYPE_CLAIM, TYPE_SUPPORT, TYPE_UPDATE
-from lbryum.constants import RECOMMENDED_CLAIMTRIE_HASH_CONFIRMS
+from lbryum.constants import RECOMMENDED_CLAIMTRIE_HASH_CONFIRMS, MAX_BATCH_QUERY_SIZE
 from lbryum.hashing import Hash, hash_160
 from lbryum.claims import verify_proof
 from lbryum.lbrycrd import hash_160_to_bc_address, is_address, decode_claim_id_hex
@@ -540,63 +540,81 @@ class Commands(object):
         tx = self._mktx(outputs, tx_fee, change_addr, domain, nocheck, unsigned)
         return self.network.synchronous_get(('blockchain.transaction.broadcast', [str(tx)]))
 
-    def get_auxilary_info_tx(self, txid, include_tip_info=False):
-        """
-        Gets the additional information related to Txn history
-        """
+    @command('w')
+    def claimhistory(self):
+        def get_info_dict(name, claim_id, nout, txo):
+            return {
+                'claim_name': name,
+                'claim_id': claim_id,
+                'nout': nout,
+                'amount': float(Decimal(txo[2]) / Decimal(COIN)),
+                'address': txo[1][1]
+            }
 
-        aux_info = {
-        'support_info' : [],
-        'update_info' : [],
-        'claim_info' : []
-        }
+        history = self.history()
+        results = []
 
-        tx = self.wallet.transactions[txid]
-        tx_outs = tx.outputs()
+        for history_result in history:
+            txid = history_result['txid']
+            tx = self.wallet.transactions[txid]
+            tx_outs = tx.outputs()
 
-        for nout, tx_out in enumerate(tx_outs):
-            if tx_out[0] & TYPE_SUPPORT:
-                is_tip = None
-                claim_name, claim_id = tx_out[1][0]
-                claim_id = encode_claim_id_hex(claim_id)
+            support_infos = []
+            update_infos = []
+            claim_infos = []
 
-                if include_tip_info:
-                    claim = self.getclaimbyid(claim_id)
-                    is_tip = claim['address'] == tx_out[1][1]
+            for nout, tx_out in enumerate(tx_outs):
+                if tx_out[0] & TYPE_SUPPORT:
+                    claim_name, claim_id = tx_out[1][0]
+                    claim_id = encode_claim_id_hex(claim_id)
+                    support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
+                elif tx_out[0] & TYPE_UPDATE:
+                    claim_name, claim_id, claim_value = tx_out[1][0]
+                    claim_id = encode_claim_id_hex(claim_id)
+                    update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
+                elif tx_out[0] & TYPE_CLAIM:
+                    claim_name, claim_value = tx_out[1][0]
+                    claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
+                    claim_id = encode_claim_id_hex(claim_id)
+                    claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
 
-                aux_info['support_info'].append({
-                    'claim_name' : claim_name,
-                    'claim_id' : claim_id,
-                    'is_tip' : is_tip,
-                    'nout' : nout,
-                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
-                })
-
-            elif tx_out[0] & TYPE_UPDATE:
-                claim_name, claim_id, claim_value = tx_out[1][0]
-                claim_id = encode_claim_id_hex(claim_id)
-                aux_info['update_info'].append({
-                    'claim_name' : claim_name,
-                    'claim_id' : claim_id,
-                    'nout' : nout,
-                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
-                })
-
-            elif tx_out[0] & TYPE_CLAIM:
-                claim_name, claim_value = tx_out[1][0]
-                claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
-                claim_id = encode_claim_id_hex(claim_id)
-                aux_info['claim_info'].append({
-                    'claim_name' : claim_name,
-                    'claim_id' : claim_id,
-                    'nout' : nout,
-                    'amount' : float(Decimal(tx_out[2]) / Decimal(COIN))
-                })
-
-        return aux_info
+            result = history_result
+            result['support_info'] = support_infos
+            result['update_info'] = update_infos
+            result['claim_info'] = claim_infos
+            results.append(result)
+        return results
 
     @command('wn')
-    def get_transaction_fee(self, txid):
+    def tiphistory(self):
+        claim_ids_to_check = []
+        results = []
+
+        claim_history = self.claimhistory()
+        for h in claim_history:
+            for supported in h['support_info']:
+                claim_ids_to_check.append(supported['claim_id'])
+
+        claims = self.getclaimsbyids(claim_ids_to_check)
+
+        for h in claim_history:
+            support_info = []
+            for supported in h['support_info']:
+                claim_ids_to_check.append(supported['claim_id'])
+                claim = claims.get(supported['claim_id'])
+                if claim:
+                    if supported['address'] == claim['address']:
+                        supported['is_tip'] = True
+                    else:
+                        supported['is_tip'] = False
+                    support_info.append(supported)
+            h['support_info'] = support_info
+            results.append(h)
+
+        return results
+
+    @command('w')
+    def transactionfee(self, txid):
         """
         Get the fee for a transaction by txid
         """
@@ -604,27 +622,27 @@ class Commands(object):
         if txid in self.wallet.transactions:
             tx = self.wallet.transactions[txid]
         else:
-            tx = Transaction(self.network.synchronous_get(('blockchain.transaction.get', [txid])))
+            return {'error': 'transaction is not in local history'}
         fee = 0
 
         for tx_in in tx.inputs():
             # add up the amounts for the txos used as inputs
             if tx_in['prevout_hash'] in self.wallet.transactions:
                 spent_tx = self.wallet.transactions[tx_in['prevout_hash']]
+                fee += spent_tx.outputs()[tx_in['prevout_n']][2]
             else:
-                spent_tx = Transaction(self.network.synchronous_get(('blockchain.transaction.get',
-                                                                     [tx_in['prevout_hash']])))
-            fee += spent_tx.outputs()[tx_in['prevout_n']][2]
+                # TODO: look up and save the transaction
+                return float(Decimal(tx.fee_for_size(self.wallet.relayfee(),
+                                                     self.wallet.fee_per_kb(self.config),
+                                                     tx.estimated_size())) / Decimal(COIN))
         return float(Decimal(fee - tx.output_value()) / Decimal(COIN))
 
-    @command('wn')
-    def history(self, include_tip_info=False):
+    @command('w')
+    def history(self):
         """Wallet history. Returns the transaction history of your wallet."""
-        out = []
-        for item in self.wallet.get_history():
-            tx_hash, conf, value, timestamp, balance = item
-            aux_tx_info = self.get_auxilary_info_tx(tx_hash, include_tip_info)
 
+        out = []
+        for tx_hash, confirms, value, timestamp, balance in self.wallet.get_history():
             try:
                 time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
             except Exception:
@@ -632,13 +650,12 @@ class Commands(object):
 
             result = {
                 'txid': tx_hash,
-                'fee': self.get_transaction_fee(tx_hash),
+                'fee': self.transactionfee(tx_hash),
                 'timestamp': timestamp,
                 'date': "%16s" % time_str,
                 'value': float(value) / float(COIN) if value is not None else None,
-                'confirmations': conf
+                'confirmations': confirms
             }
-            result.update(aux_tx_info)
             out.append(result)
         return out
 
@@ -767,6 +784,57 @@ class Commands(object):
                     if not certificate:
                         raise Exception(
                             'Certificate claim {} not found'.format(decoded.certificate_id))
+                claim_result['has_signature'] = True
+                claim_result['signature_is_valid'] = False
+                validated, channel_name = self.validate_claim_signature_and_get_channel_name(
+                    decoded, certificate, claim_result['address'])
+                claim_result['channel_name'] = channel_name
+                if validated:
+                    claim_result['signature_is_valid'] = True
+
+        if 'height' in claim_result and claim_result['height'] is None:
+            claim_result['height'] = -1
+
+        if 'amount' in claim_result and not isinstance(claim_result['amount'], float):
+            claim_result = format_amount_value(claim_result)
+
+        return claim_result
+
+    def offline_parse_and_validate_claim_result(self, claim_result, certificate, raw=False):
+        """
+        Parse and validate a claim result from lbryum server
+
+        Unlike  parse_and_validate_claim_result, this function does not
+        send any queries to lbryum server. In the other function this
+        is done to retrieve the certificate claim referenced by the signed
+        claim.
+
+        :param claim_result: a claim result from lbryum server
+        :param certificate: a certificate result from lbryum server | None
+        :param raw: bool
+        :return: formatted claim result
+        """
+
+        # TODO: remove the old parse_and_validate_claim_result function
+
+        if not claim_result or 'value' not in claim_result:
+            return claim_result
+
+        claim_result['decoded_claim'] = False
+        decoded = None
+
+        if not raw:
+            claim_value = claim_result['value']
+            try:
+                decoded = smart_decode(claim_value)
+                claim_result['value'] = decoded.claim_dict
+                claim_result['decoded_claim'] = True
+            except DecodeError:
+                pass
+
+        if decoded:
+            claim_result['has_signature'] = False
+            if decoded.has_signature:
                 claim_result['has_signature'] = True
                 claim_result['signature_is_valid'] = False
                 validated, channel_name = self.validate_claim_signature_and_get_channel_name(
@@ -1308,6 +1376,54 @@ class Commands(object):
 
         result = self.network.synchronous_get(('blockchain.claimtrie.getclaimbyid', [claim_id]))
         return self.parse_and_validate_claim_result(result, raw=raw)
+
+    @command('n')
+    def getclaimsbyids(self, claim_ids, raw=False):
+        """
+        Get a dictionary of claim results keyed by claim id for a list of claim ids
+        """
+
+        def iter_certificate_ids(claim_results):
+            for claim_id, claim_result in claim_results.iteritems():
+                if claim_result and 'value' in claim_result:
+                    try:
+                        decoded = smart_decode(claim_result['value'])
+                        if decoded.has_signature:
+                            yield claim_id, decoded.certificate_id
+                    except DecodeError:
+                        pass
+
+        def iter_certificate_claims(certificate_results):
+            for claim_id, claim_result in certificate_results.iteritems():
+                yield claim_id, self.offline_parse_and_validate_claim_result(claim_result, None,
+                                                                             raw)
+
+        def iter_resolve_and_parse(to_query):
+            claim_results = self.network.synchronous_get(("blockchain.claimtrie.getclaimsbyids",
+                                                          to_query))
+            certificate_infos = dict(iter_certificate_ids(claim_results))
+
+            cert_results = self.network.synchronous_get(("blockchain.claimtrie.getclaimsbyids",
+                                                         certificate_infos.values()))
+            certificates = dict(iter_certificate_claims(cert_results))
+
+            for claim_id, claim_result in claim_results.iteritems():
+                if claim_id in certificate_infos:
+                    certificate_id = certificate_infos[claim_id]
+                    certificate = certificates[certificate_id]
+                else:
+                    certificate = None
+                yield claim_id, self.offline_parse_and_validate_claim_result(claim_result,
+                                                                             certificate, raw)
+
+        def iter_queries(remaining):
+            while remaining:
+                query = remaining[:MAX_BATCH_QUERY_SIZE]
+                remaining = remaining[MAX_BATCH_QUERY_SIZE:]
+                for claim_id, claim in iter_resolve_and_parse(query):
+                    yield claim_id, claim
+
+        return dict(iter_queries(claim_ids))
 
     @command('n')
     def getnthclaimforname(self, name, n, raw=False):
