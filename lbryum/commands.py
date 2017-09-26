@@ -754,6 +754,8 @@ class Commands(object):
 
     def validate_claim_signature_and_get_channel_name(self, claim, certificate_claim,
                                                       claim_address):
+        if not certificate_claim:
+            return False, None
         certificate = smart_decode(certificate_claim['value'])
         if Commands._validate_signed_claim(claim, claim_address, certificate):
             return True, certificate_claim['name']
@@ -782,8 +784,7 @@ class Commands(object):
                     log.info("fetching certificate to check claim signature")
                     certificate = self.getclaimbyid(decoded.certificate_id)
                     if not certificate:
-                        raise Exception(
-                            'Certificate claim {} not found'.format(decoded.certificate_id))
+                        log.warning('Certificate %s not found', decoded.certificate_id)
                 claim_result['has_signature'] = True
                 claim_result['signature_is_valid'] = False
                 validated, channel_name = self.validate_claim_signature_and_get_channel_name(
