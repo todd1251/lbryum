@@ -12,7 +12,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Fixed
-  *
+  * Fix `getnameclaims` when a certificate is missing for a signed claim (https://github.com/lbryio/lbry/issues/771)
   *
 
 ### Deprecated
