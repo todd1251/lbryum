@@ -18,7 +18,7 @@ requires = [
     'six>=1.9.0',
     'appdirs==1.4.3',
     'protobuf==3.2.0',
-    'jsonschema==2.5.1',
+    'jsonschema',
     'lbryschema==0.0.12',
 ]
 
