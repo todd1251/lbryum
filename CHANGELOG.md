@@ -12,7 +12,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Fixed
-  * Fix `getnameclaims` when a certificate is missing for a signed claim (https://github.com/lbryio/lbry/issues/771)
+  *
   *
 
 ### Deprecated
@@ -31,6 +31,13 @@ labeled as 2.7.1. Subsequent releases will follow
   *
   *
 
+
+## [3.1.9] - 2017-10-12
+### Fixed
+ * Fix `getnameclaims` when a certificate is missing for a signed claim (https://github.com/lbryio/lbry/issues/771)
+
+### Changed
+ * Bumped `lbryschema` requirement to 0.0.12 [see changelog](https://github.com/lbryio/lbryschema/blob/master/CHANGELOG.md#0012---2017-10-12)
 
 ## [3.1.8] - 2017-09-20
 ### Changed
