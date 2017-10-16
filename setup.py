@@ -10,14 +10,14 @@ if sys.version_info[:3] < (2, 7, 0):
 data_files = []
 
 requires = [
-    'slowaes==0.1a1',
-    'ecdsa==0.13',
+    'slowaes',
+    'ecdsa',
     'pbkdf2',
     'requests',
     'jsonrpclib',
-    'six>=1.9.0',
-    'appdirs==1.4.3',
-    'protobuf==3.2.0',
+    'six',
+    'appdirs',
+    'protobuf',
     'jsonschema',
     'lbryschema==0.0.12',
 ]
