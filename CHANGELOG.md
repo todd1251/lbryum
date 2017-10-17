@@ -33,6 +33,8 @@ labeled as 2.7.1. Subsequent releases will follow
   * Added `getcertificatesforsigning` command
   * Added `lock_wallet`, `decrypt_wallet`, and `update_passwords` functions and `locked` property to `Commands` class
   * Added OS keyring support for storing the wallet encryption password
+  * Information related to abandon transacions now displayed in transaction list/history (step towards for lbryio/lbry#946)
+  *
 
 ### Removed
   *
