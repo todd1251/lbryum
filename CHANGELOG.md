@@ -24,7 +24,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Added
-  *
+  * Added `skip_validate_signatures` parameter to `getnameclaims`
   *
 
 ### Removed
