@@ -507,7 +507,8 @@ class Commands(object):
     @command('wpn')
     def sendclaimtoaddress(self, claim_id, destination, amount, tx_fee=None, change_addr=None,
                            broadcast=True):
-        claims = self.getnameclaims(raw=True, include_supports=False, claim_id=claim_id)
+        claims = self.getnameclaims(raw=True, include_supports=False, claim_id=claim_id,
+                                    skip_validate_signatures=True)
         if len(claims) > 1:
             return {"success": False, 'reason': 'more than one claim that matches'}
         elif len(claims) == 0:
@@ -753,10 +754,12 @@ class Commands(object):
         return True
 
     def validate_claim_signature_and_get_channel_name(self, claim, certificate_claim,
-                                                      claim_address):
+                                                      claim_address, decoded_certificate=None):
         if not certificate_claim:
             return False, None
-        certificate = smart_decode(certificate_claim['value'])
+        certificate = decoded_certificate or smart_decode(certificate_claim['value'])
+        if not isinstance(certificate, ClaimDict):
+            raise TypeError("Certificate is not a ClaimDict: %s" % str(type(certificate)))
         if Commands._validate_signed_claim(claim, claim_address, certificate):
             return True, certificate_claim['name']
         return False, None
@@ -801,7 +804,9 @@ class Commands(object):
 
         return claim_result
 
-    def offline_parse_and_validate_claim_result(self, claim_result, certificate, raw=False):
+    def offline_parse_and_validate_claim_result(self, claim_result, certificate, raw=False,
+                                                decoded_claim=None, decoded_certificate=None,
+                                                skip_validate_signatures=False):
         """
         Parse and validate a claim result from lbryum server
 
@@ -813,6 +818,8 @@ class Commands(object):
         :param claim_result: a claim result from lbryum server
         :param certificate: a certificate result from lbryum server | None
         :param raw: bool
+        :param decoded_claim: ClaimDict
+        :param decoded_certificate: ClaimDict
         :return: formatted claim result
         """
 
@@ -824,25 +831,38 @@ class Commands(object):
         claim_result['decoded_claim'] = False
         decoded = None
 
+        if decoded_claim:
+            if not isinstance(decoded_claim, ClaimDict):
+                raise TypeError("Not given a ClaimDict: %s" % str(type(decoded_claim)))
+        if decoded_certificate:
+            if not isinstance(decoded_certificate, ClaimDict):
+                raise TypeError("Not given a ClaimDict: %s" % str(type(decoded_certificate)))
+
         if not raw:
             claim_value = claim_result['value']
-            try:
-                decoded = smart_decode(claim_value)
+            if decoded_claim:
+                decoded = decoded_claim
                 claim_result['value'] = decoded.claim_dict
                 claim_result['decoded_claim'] = True
-            except DecodeError:
-                pass
+            else:
+                try:
+                    decoded = smart_decode(claim_value)
+                    claim_result['value'] = decoded.claim_dict
+                    claim_result['decoded_claim'] = True
+                except DecodeError:
+                    pass
 
         if decoded:
             claim_result['has_signature'] = False
             if decoded.has_signature:
                 claim_result['has_signature'] = True
                 claim_result['signature_is_valid'] = False
-                validated, channel_name = self.validate_claim_signature_and_get_channel_name(
-                    decoded, certificate, claim_result['address'])
-                claim_result['channel_name'] = channel_name
-                if validated:
-                    claim_result['signature_is_valid'] = True
+                if not skip_validate_signatures:
+                    validated, channel_name = self.validate_claim_signature_and_get_channel_name(
+                        decoded, certificate, claim_result['address'])
+                    claim_result['channel_name'] = channel_name
+                    if validated:
+                        claim_result['signature_is_valid'] = True
 
         if 'height' in claim_result and claim_result['height'] is None:
             claim_result['height'] = -1
@@ -1438,7 +1458,7 @@ class Commands(object):
 
     @command('wn')
     def getnameclaims(self, raw=False, include_abandoned=False, include_supports=True,
-                      claim_id=None, txid=None, nout=None):
+                      txid=None, nout=None, claim_id=None, skip_validate_signatures=False):
         """
         Get  my name claims from wallet
         """
@@ -1446,14 +1466,73 @@ class Commands(object):
         result = self.wallet.get_name_claims(include_abandoned=include_abandoned,
                                              include_supports=include_supports)
         name_claims = []
+        claim_ids = [c['claim_id'] for c in result]
+        claims = {c['claim_id']: c for c in result}
+        claim_tuples = []
+        needed_certificates = []
+        supports = []
         for claim in result:
-            parsed = self.parse_and_validate_claim_result(claim, raw=raw)
-            if claim_id is not None and parsed['claim_id'] != claim_id:
+            if claim_id and claim_id != claim['claim_id']:
                 continue
-            if txid is not None and nout is not None:
+            if 'value' in claim:
+                try:
+                    decoded = smart_decode(claim['value'])
+                    if not skip_validate_signatures:
+                        certificate_id = decoded.certificate_id
+                        if certificate_id and certificate_id not in claim_ids:
+                            needed_certificates.append(certificate_id)
+                    else:
+                        certificate_id = None
+                    claim_tuples.append((claim['claim_id'], certificate_id))
+                    claim['value'] = decoded
+                    claims[claim['claim_id']] = claim
+                except DecodeError:
+                    claim_tuples.append((claim['claim_id'], None))
+            else:
+                supports.append(claim)
 
+        if needed_certificates:
+            log.warning("Fetching %i certificate claims for claims made with certificates not in "
+                        "this wallet")
+            needed_cert_results = self.getclaimsbyids(needed_certificates)
+            for _claim_id, cert_claim in needed_cert_results.iteritems():
+                cert_claim['value'] = smart_decode(cert_claim['value'])
+                claims[_claim_id] = cert_claim
+
+        claim_dicts = {}
+
+        for _claim_id, claim in claims.iteritems():
+            claim_dict = claim['value']
+            if not isinstance(claim_dict, ClaimDict):
+                raise TypeError(str(type(claim_dict)))
+            claim_dicts[_claim_id] = claim_dict
+
+        for _claim_id, certificate_id in claim_tuples:
+            if claim_id is not None and claim_id != _claim_id:
+                continue
+
+            if certificate_id:
+                certificate = claims[certificate_id]
+                decoded_certificate = claim_dicts[certificate_id]
+            else:
+                certificate = None
+                decoded_certificate = None
+
+            claim = claims[_claim_id]
+            decoded_claim = claim_dicts[_claim_id]
+            parsed = self.offline_parse_and_validate_claim_result(
+                claim, certificate=certificate, raw=raw, decoded_claim=decoded_claim,
+                decoded_certificate=decoded_certificate,
+                skip_validate_signatures=skip_validate_signatures)
+
+            if txid is not None and nout is not None:
                 if parsed['txid'] != txid or parsed['nout'] != nout:
                     continue
+
+            name_claims.append(parsed)
+
+        for support in supports:
+            parsed = format_amount_value(support)
             name_claims.append(parsed)
 
         return name_claims
@@ -1532,8 +1611,10 @@ class Commands(object):
         certificate_id = parsed_claim['certificate_id']
 
         if not skip_update_check:
-            my_claims = [claim for claim in self.getnameclaims(include_supports=False) if
-                         claim['name'] == name]
+            my_claims = [claim
+                         for claim in self.getnameclaims(include_supports=False,
+                                                         skip_validate_signatures=True)
+                         if claim['name'] == name]
             if len(my_claims) > 1:
                 return {'success': False, 'reason': "Dont know which claim to update"}
             if my_claims:
@@ -1649,7 +1730,8 @@ class Commands(object):
         claim_value = None
         claim_address = None
         if claim_id is None:
-            claims = self.getnameclaims(raw=True, include_supports=False)
+            claims = self.getnameclaims(raw=True, include_supports=False,
+                                        skip_validate_signatures=True)
             for claim in claims:
                 if claim['name'] == name and not claim['is_spent']:
                     claim_id = claim['claim_id']
@@ -1837,7 +1919,7 @@ class Commands(object):
         if change_addr is None:
             change_addr = self.wallet.create_new_address(for_change=True)
         if claim_id is None or txid is None or nout is None:
-            claims = self.getnameclaims()
+            claims = self.getnameclaims(skip_validate_signatures=True)
             for claim in claims:
                 if claim['name'] == name and not claim['is_spent']:
                     claim_id = claim['claim_id']
@@ -2054,7 +2136,8 @@ class Commands(object):
         Either specify the claim with a claim_id or with txid and nout
         """
         claims = self.getnameclaims(raw=True, include_abandoned=False, include_supports=True,
-                                    claim_id=claim_id, txid=txid, nout=nout)
+                                    claim_id=claim_id, txid=txid, nout=nout,
+                                    skip_validate_signatures=True)
         if len(claims) > 1:
             return {"success": False, 'reason': 'more than one claim that matches'}
         elif len(claims) == 0:
@@ -2171,6 +2254,7 @@ command_options = {
                                 "one"),
     'amount': ("-a", "--amount", "amount to use in updated name claim"),
     'include_abandoned': (None, "--include_abandoned", "include abandoned claims"),
+    'skip_validate_signatures': (None, "--skip_validate_signatures", "include abandoned claims"),
     'include_supports': (None, "--include_supports", "include supports"),
     'skip_update_check': (None, "--skip_update_check",
                           "do not check for an existing unspent claim before making a new one"),
