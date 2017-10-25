@@ -820,6 +820,9 @@ class Commands(object):
         :param raw: bool
         :param decoded_claim: ClaimDict
         :param decoded_certificate: ClaimDict
+        :param skip_validate_signatures: bool, claim signature validation is not necessary for many
+        local operations and adds significant overhead to the call, ie 2200 claims can be parsed
+        in under 6 seconds without signature validation and just over a minute with it
         :return: formatted claim result
         """
 
@@ -863,6 +866,8 @@ class Commands(object):
                     claim_result['channel_name'] = channel_name
                     if validated:
                         claim_result['signature_is_valid'] = True
+                else:
+                    claim_result['signature_is_valid'] = None
 
         if 'height' in claim_result and claim_result['height'] is None:
             claim_result['height'] = -1
