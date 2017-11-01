@@ -879,7 +879,8 @@ class Commands(object):
 
     @staticmethod
     def _validate_signed_claim(claim, claim_address, certificate):
-        assert claim.has_signature, "Claim is not signed"
+        if not claim.has_signature:
+            raise Exception("Claim is not signed")
         if not base_decode(claim_address, ADDRESS_LENGTH, 58):
             raise Exception("Not given a valid claim address")
         try:
@@ -1468,22 +1469,51 @@ class Commands(object):
         Get  my name claims from wallet
         """
 
+        # get the name claims from the wallet
         result = self.wallet.get_name_claims(include_abandoned=include_abandoned,
                                              include_supports=include_supports)
+
         name_claims = []
+
+        # list of claim ids of claims in the wallet
         claim_ids = [c['claim_id'] for c in result]
+
+        # dictionary of claims in the wallet, keyed by claim id
         claims = {c['claim_id']: c for c in result}
+
+        # dictionary of decoded ClaimDict objects, keyed by claim id
+        claim_dict_objs = {}
+
+        # list of (<claim_id>, <certificate_id>) tuples, where <certificate_id> is None if
+        # the claim is not signed
+        # note: the certificate claim is not necessarily in the wallet
         claim_tuples = []
+
+        # list of certificate claim ids not known by the wallet but used for signing
         needed_certificates = []
+
+        # list of support transactions
         supports = []
+
         for claim in result:
+            # if we're looking for a specific claim by its id, skip all other claims
             if claim_id and claim_id != claim['claim_id']:
                 continue
+            # if we're looking for a specific claim by its outpoint, skip all other claims
+            if txid is not None and nout is not None:
+                if claim['txid'] != txid and claim['nout'] != nout:
+                    continue
+            # if transaction is a claim or update (supports don't have a `value`)
             if 'value' in claim:
                 try:
                     decoded = smart_decode(claim['value'])
+                    if not isinstance(decoded, ClaimDict):
+                        log.warning("Failed to decode %s to a claim dict, instead got %s",
+                                    claim['name'], str(type(decoded)))
                     if not skip_validate_signatures:
                         certificate_id = decoded.certificate_id
+                        # if the claim is signed but the certificate id is not for a claim in the
+                        # wallet, add it to the list of needed claims
                         if certificate_id and certificate_id not in claim_ids:
                             needed_certificates.append(certificate_id)
                     else:
@@ -1496,50 +1526,50 @@ class Commands(object):
             else:
                 supports.append(claim)
 
+        # if we're not skipping signature validation, claim_tuples now maps all the claims in the
+        # wallet to their certificate claims (if applicable) and any certificate claims not also in
+        # the wallet are in the needed_certificates list
         if needed_certificates:
             log.warning("Fetching %i certificate claims for claims made with certificates not in "
-                        "this wallet")
+                        "this wallet", len(needed_certificates))
             needed_cert_results = self.getclaimsbyids(needed_certificates)
-            for _claim_id, cert_claim in needed_cert_results.iteritems():
-                cert_claim['value'] = smart_decode(cert_claim['value'])
-                claims[_claim_id] = cert_claim
+            # put the fetched certificate claims into the claims dictionary for use validating
+            # the signatures of the claims in the wallet
+            for _claim_id in needed_cert_results:
+                claims[_claim_id] = needed_cert_results[_claim_id]
+                claims[_claim_id]['value'] = smart_decode(needed_cert_results[_claim_id]['value'])
 
-        claim_dicts = {}
+        # use pre-decoded ClaimDicts rather than decoding them each time we call
+        # offline_parse_and_validate_claim_result
+        for _claim_id in claims:
+            claim_value = claims[_claim_id]['value']
+            if isinstance(claim_value, ClaimDict):
+                claim_dict_objs[_claim_id] = claim_value
+            else:
+                claim_dict_objs[_claim_id] = ClaimDict.load_dict(claim_value)
 
-        for _claim_id, claim in claims.iteritems():
-            claim_dict = claim['value']
-            if not isinstance(claim_dict, ClaimDict):
-                raise TypeError(str(type(claim_dict)))
-            claim_dicts[_claim_id] = claim_dict
-
+        # format (and validate, unless skip_validate_signatures) the resulting claims for return
         for _claim_id, certificate_id in claim_tuples:
-            if claim_id is not None and claim_id != _claim_id:
-                continue
-
             if certificate_id:
                 certificate = claims[certificate_id]
-                decoded_certificate = claim_dicts[certificate_id]
+                certificate_obj = claim_dict_objs[certificate_id]
             else:
                 certificate = None
-                decoded_certificate = None
+                certificate_obj = None
 
             claim = claims[_claim_id]
-            decoded_claim = claim_dicts[_claim_id]
+            claim_obj = claim_dict_objs[_claim_id]
+
             parsed = self.offline_parse_and_validate_claim_result(
-                claim, certificate=certificate, raw=raw, decoded_claim=decoded_claim,
-                decoded_certificate=decoded_certificate,
+                claim, certificate=certificate, raw=raw, decoded_claim=claim_obj,
+                decoded_certificate=certificate_obj,
                 skip_validate_signatures=skip_validate_signatures)
-
-            if txid is not None and nout is not None:
-                if parsed['txid'] != txid or parsed['nout'] != nout:
-                    continue
-
             name_claims.append(parsed)
 
+        # format and add supports to claims for return
         for support in supports:
             parsed = format_amount_value(support)
             name_claims.append(parsed)
-
         return name_claims
 
     @command('wpn')
