@@ -1478,8 +1478,8 @@ class Commands(object):
         # list of claim ids of claims in the wallet
         claim_ids = [c['claim_id'] for c in result]
 
-        # dictionary of claims in the wallet, keyed by claim id
-        claims = {c['claim_id']: c for c in result}
+        # dictionary of claims (not including supports) in the wallet, keyed by claim id
+        claims = {}
 
         # dictionary of decoded ClaimDict objects, keyed by claim id
         claim_dict_objs = {}
@@ -1543,10 +1543,7 @@ class Commands(object):
         # offline_parse_and_validate_claim_result
         for _claim_id in claims:
             claim_value = claims[_claim_id]['value']
-            if isinstance(claim_value, ClaimDict):
-                claim_dict_objs[_claim_id] = claim_value
-            else:
-                claim_dict_objs[_claim_id] = ClaimDict.load_dict(claim_value)
+            claim_dict_objs[_claim_id] = claim_value
 
         # format (and validate, unless skip_validate_signatures) the resulting claims for return
         for _claim_id, certificate_id in claim_tuples:
