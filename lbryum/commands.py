@@ -543,12 +543,28 @@ class Commands(object):
 
     @command('w')
     def claimhistory(self):
-        def get_info_dict(name, claim_id, nout, txo):
+
+        claim_amt = dict()
+        def get_info_dict(name, claim_id, nout, txo, value, tx_type):
+            amount = float(Decimal(txo[2]) / Decimal(COIN))
+
+            if tx_type == "claim":
+                amount = -1 * amount
+                claim_amt[claim_id] = amount
+            elif tx_type == "support" and value < 0:
+                amount = -1 * amount
+            elif tx_type == "update":
+                abs_amount = abs(amount)
+                abs_prev_amount = abs(claim_amt[claim_id])
+                claim_amt[claim_id] = amount
+                amount = abs_prev_amount - abs_amount
+
+
             return {
                 'claim_name': name,
                 'claim_id': claim_id,
                 'nout': nout,
-                'amount': float(Decimal(txo[2]) / Decimal(COIN)),
+                'amount': amount,
                 'address': txo[1][1]
             }
 
@@ -568,16 +584,19 @@ class Commands(object):
                 if tx_out[0] & TYPE_SUPPORT:
                     claim_name, claim_id = tx_out[1][0]
                     claim_id = encode_claim_id_hex(claim_id)
-                    support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
+                    support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                        history_result['value'], tx_type="support"))
                 elif tx_out[0] & TYPE_UPDATE:
                     claim_name, claim_id, claim_value = tx_out[1][0]
                     claim_id = encode_claim_id_hex(claim_id)
-                    update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
+                    update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                        history_result['value'], tx_type="update"))
                 elif tx_out[0] & TYPE_CLAIM:
                     claim_name, claim_value = tx_out[1][0]
                     claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
                     claim_id = encode_claim_id_hex(claim_id)
-                    claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out))
+                    claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                        history_result['value'], tx_type="claim"))
 
             result = history_result
             result['support_info'] = support_infos

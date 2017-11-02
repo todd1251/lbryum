@@ -12,7 +12,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Fixed
-  *
+  * Take care of sign of txn amount and amounts of updates are now relative (lbryio/lbry#947)
   *
 
 ### Deprecated
