@@ -563,7 +563,8 @@ class Commands(object):
                 'claim_name': name,
                 'claim_id': claim_id,
                 'nout': nout,
-                'amount': amount,
+                'balance_delta': amount,
+                'amount': float(Decimal(txo[2]) / Decimal(COIN)),
                 'address': txo[1][1]
             }
 
