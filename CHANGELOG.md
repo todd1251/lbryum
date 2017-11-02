@@ -24,12 +24,18 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Added
-  *
+  * Added `skip_validate_signatures` parameter to `getnameclaims`
   *
 
 ### Removed
   *
   *
+
+
+## [3.1.10] - 2017-10-25
+### Changed
+ * Bumped `lbryschema` requirement to 0.0.13 [see changelog](https://github.com/lbryio/lbryschema/blob/master/CHANGELOG.md#0013---2017-10-25)
+ * Bump `jsonschema` requirement to 2.6.0
 
 
 ## [3.1.9] - 2017-10-12
