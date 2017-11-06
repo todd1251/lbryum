@@ -188,6 +188,8 @@ class Abstract_Wallet(PrintError):
         self.transaction_lock = threading.Lock()
         self.tx_event = threading.Event()
 
+        self.send_tx_lock = threading.Lock()
+
         self.check_history()
 
         self.claim_certificates = storage.get('claim_certificates', {})
@@ -1209,19 +1211,33 @@ class Abstract_Wallet(PrintError):
         if keypairs:
             tx.sign(keypairs)
 
-    def sendtx(self, tx):
-        # synchronous
-        h = self.send_tx(tx)
-        self.tx_event.wait()
-        return self.receive_tx(h, tx)
-
-    def send_tx(self, tx):
-        # asynchronous
-        self.tx_event.clear()
+    def send_tx(self, tx, timeout=300):
         # fixme: this does not handle the case where server does not answer
-        assert self.network.interface, "Not connected."
-        self.network.send([('blockchain.transaction.broadcast', [str(tx)])], self.on_broadcast)
-        return tx.hash()
+        if not self.network.interface:
+            raise Exception("Not connected.")
+
+        txid = tx.hash()
+
+        with self.send_tx_lock:
+            self.network.send([('blockchain.transaction.broadcast', [str(tx)])], self.on_broadcast)
+            self.tx_event.wait()
+            success, result = self.receive_tx(txid, tx)
+            self.tx_event.clear()
+
+            if not success:
+                log.error("send tx failed: %s", result)
+                return success, result
+
+            log.debug("waiting for %s to be added to the wallet", txid)
+            now = time.time()
+            while txid not in self.transactions and time.time() < now + timeout:
+                time.sleep(0.1)
+
+            if txid not in self.transactions:
+                log.error("timeout broadcasting %s", txid)
+                return False, "timeout broadcasting transaction: %s" % str(tx)
+            log.info("successfully sent %s", txid)
+        return success, result
 
     def on_broadcast(self, r):
         self.tx_result = r.get('result')
