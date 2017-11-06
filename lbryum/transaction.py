@@ -2,6 +2,7 @@ import sys
 import ecdsa
 from ecdsa.curves import SECP256k1
 import hashlib
+import logging
 
 from lbryum.constants import TYPE_SCRIPT, TYPE_PUBKEY, TYPE_UPDATE, TYPE_SUPPORT, TYPE_CLAIM
 from lbryum.constants import TYPE_ADDRESS, NO_SIGNATURE
@@ -12,6 +13,8 @@ from lbryum.lbrycrd import hash_160_to_bc_address, bc_address_to_hash_160, op_pu
 from lbryum.lbrycrd import address_from_private_key, point_to_ser, MyVerifyingKey, MySigningKey
 from lbryum.lbrycrd import public_key_to_bc_address, regenerate_key, public_key_from_private_key
 from lbryum.util import print_error, profiler, var_int, int_to_hex, parse_sig
+
+log = logging.getLogger()
 
 
 def parse_xpub(x_pubkey):
@@ -660,7 +663,7 @@ class Transaction(object):
                                                     sigdecode=ecdsa.util.sigdecode_der)
                     txin['signatures'][ii] = sig.encode('hex')
                     self._inputs[i] = txin
-        print_error("is_complete", self.is_complete())
+        log.debug("is_complete: %s", self.is_complete())
         self.raw = self.serialize()
 
     def get_outputs(self):
