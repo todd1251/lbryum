@@ -217,6 +217,10 @@ def main():
         logging.getLogger("lbryum").setLevel(logging.INFO)
     else:
         logging.getLogger("lbryum").setLevel(logging.ERROR)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s "
+                                           "%(name)s:%(lineno)d: %(message)s"))
+    logging.getLogger("lbryum").addHandler(handler)
 
     # config is an object passed to the various constructors (wallet, interface)
     config_options = args.__dict__
