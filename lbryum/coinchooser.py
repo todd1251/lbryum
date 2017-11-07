@@ -1,4 +1,5 @@
 import struct
+import logging
 from collections import defaultdict, namedtuple
 from math import floor, log10
 
@@ -7,6 +8,8 @@ from lbryum.constants import COIN, TYPE_ADDRESS
 from lbryum.transaction import Transaction
 from lbryum.errors import NotEnoughFunds
 from lbryum.util import PrintError
+
+log = logging.getLogger()
 
 
 class PRNG(object):
@@ -143,9 +146,9 @@ class CoinChooserBase(PrintError):
         amounts = [amount for amount in amounts if amount >= dust_threshold]
         change = [(TYPE_ADDRESS, addr, amount)
                   for addr, amount in zip(change_addrs, amounts)]
-        self.print_error('change:', change)
+        log.debug('change: %s', change)
         if dust:
-            self.print_error('not keeping dust', dust)
+            log.debug('not keeping dust %s', dust)
         return change
 
     def make_tx(self, coins, outputs, change_addrs, fee_estimator,
@@ -198,8 +201,8 @@ class CoinChooserBase(PrintError):
         change = self.change_outputs(tx, change_addrs, fee, dust_threshold)
         tx.add_outputs(change)
 
-        self.print_error("using %d inputs" % len(tx.inputs()))
-        self.print_error("using buckets:", [bucket.desc for bucket in buckets])
+        log.debug("using %i inputs", len(tx.inputs()))
+        log.info("using buckets: %s", [bucket.desc for bucket in buckets])
 
         return tx
 
@@ -268,8 +271,8 @@ class CoinChooserRandom(CoinChooserBase):
         candidates = self.bucket_candidates(buckets, sufficient_funds)
         penalties = [penalty_func(cand) for cand in candidates]
         winner = candidates[penalties.index(min(penalties))]
-        self.print_error("Bucket sets:", len(buckets))
-        self.print_error("Winning penalty:", min(penalties))
+        log.debug("Bucket sets: %i", len(buckets))
+        log.debug("Winning penalty: %s", min(penalties))
         return winner
 
 

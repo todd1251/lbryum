@@ -1738,7 +1738,7 @@ class Commands(object):
                     'reason': 'Not enough funds'}
         self.wallet.sign_transaction(tx, self._password)
         if broadcast:
-            success, out = self.wallet.sendtx(tx)
+            success, out = self.wallet.send_tx(tx)
             if not success:
                 return {'success': False, 'reason': out}
 
@@ -1882,7 +1882,7 @@ class Commands(object):
             return {'success': False, 'reason': 'Not enough funds'}
         self.wallet.sign_transaction(tx, self._password)
         if broadcast:
-            success, out = self.wallet.sendtx(tx)
+            success, out = self.wallet.send_tx(tx)
             if not success:
                 return {'success': False, 'reason': out}
 
@@ -2158,7 +2158,7 @@ class Commands(object):
         tx = Transaction.from_io(inputs, outputs)
         self.wallet.sign_transaction(tx, self._password)
         if broadcast:
-            success, out = self.wallet.sendtx(tx)
+            success, out = self.wallet.send_tx(tx)
             if not success:
                 return {"success": False, "reason": out}
 
@@ -2224,7 +2224,7 @@ class Commands(object):
         tx = Transaction.from_io(inputs, outputs)
         self.wallet.sign_transaction(tx, self._password)
         if broadcast:
-            success, out = self.wallet.sendtx(tx)
+            success, out = self.wallet.send_tx(tx)
             if not success:
                 return {'success': False, 'reason': out}
         return {'success': True, 'txid': tx.hash(), 'tx': str(tx),

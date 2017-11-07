@@ -13,15 +13,15 @@ labeled as 2.7.1. Subsequent releases will follow
 
 ### Fixed
   * Take care of sign of txn amount and amounts of updates are now relative (lbryio/lbry#947)
-  *
+  * Fixed race condition when sending a transaction
 
 ### Deprecated
   *
   *
 
 ### Changed
-  *
-  *
+  * Use `threading.Lock` to prevent overlapping `send_tx` calls
+  * Block returning from `send_tx` on the transaction being added to the wallet.
 
 ### Added
   * Added `skip_validate_signatures` parameter to `getnameclaims`
