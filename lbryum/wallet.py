@@ -1234,6 +1234,7 @@ class Abstract_Wallet(PrintError):
                 time.sleep(0.2)
 
             if txid not in self.transactions:
+                #TODO: detect if the txid is not known because it changed
                 log.error("timed out while waiting to receive back a broadcast transaction, "
                           "expected txid: %s", txid)
                 return False, "timed out while waiting to receive back a broadcast transaction, " \
