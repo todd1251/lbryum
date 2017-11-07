@@ -555,11 +555,15 @@ class Commands(object):
                 amount = -1 * amount
             elif tx_type == "update":
                 abs_amount = abs(amount)
-                abs_prev_amount = abs(claim_amt[claim_id])
-                claim_amt[claim_id] = amount
-                amount = abs_prev_amount - abs_amount
-
-
+                if claim_id in claim_amt:
+                    # the previous update or claim is known already
+                    abs_prev_amount = abs(claim_amt[claim_id])
+                    claim_amt[claim_id] = amount
+                    amount = abs_prev_amount - abs_amount
+                else:
+                    # this is a claim that was sent to us via an update transaction
+                    amount = abs_amount
+                    claim_amt[claim_id] = abs_amount
             return {
                 'claim_name': name,
                 'claim_id': claim_id,
