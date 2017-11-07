@@ -1231,7 +1231,7 @@ class Abstract_Wallet(PrintError):
             log.debug("waiting for %s to be added to the wallet", txid)
             now = time.time()
             while txid not in self.transactions and time.time() < now + timeout:
-                time.sleep(0.1)
+                time.sleep(0.2)
 
             if txid not in self.transactions:
                 log.error("timeout broadcasting %s", txid)
