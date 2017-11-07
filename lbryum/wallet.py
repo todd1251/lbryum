@@ -1234,8 +1234,10 @@ class Abstract_Wallet(PrintError):
                 time.sleep(0.2)
 
             if txid not in self.transactions:
-                log.error("timeout broadcasting %s", txid)
-                return False, "timeout broadcasting transaction: %s" % str(tx)
+                log.error("timed out while waiting to receive back a broadcast transaction, "
+                          "expected txid: %s", txid)
+                return False, "timed out while waiting to receive back a broadcast transaction, " \
+                              "expected txid: %s" % txid
             log.info("successfully sent %s", txid)
         return success, result
 
