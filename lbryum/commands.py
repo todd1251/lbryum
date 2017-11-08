@@ -1524,8 +1524,11 @@ class Commands(object):
             if claim_id and claim_id != claim['claim_id']:
                 continue
             # if we're looking for a specific claim by its outpoint, skip all other claims
-            if txid is not None and nout is not None:
-                if claim['txid'] != txid and claim['nout'] != nout:
+            if txid is not None:
+                if claim['txid'] != txid:
+                    continue
+            if nout is not None:
+                if claim['nout'] != nout:
                     continue
             # if transaction is a claim or update (supports don't have a `value`)
             if 'value' in claim:
