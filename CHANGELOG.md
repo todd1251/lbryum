@@ -12,26 +12,40 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Fixed
-  * Take care of sign of txn amount and amounts of updates are now relative (lbryio/lbry#947)
-  * Fixed KeyError in `claimhistory` for transferred claim (https://github.com/lbryio/lbryum/issues/168)
-  * Fixed race condition when sending a transaction
-  * Fixed filtering by txid and/or nout in `getnameclaims`
+  *
+  *
 
 ### Deprecated
   *
   *
 
 ### Changed
-  * Use `threading.Lock` to prevent overlapping `send_tx` calls
-  * Block returning from `send_tx` on the transaction being added to the wallet.
+  *
+  *
 
 ### Added
-  * Added `skip_validate_signatures` parameter to `getnameclaims`
+  *
   *
 
 ### Removed
   *
   *
+
+
+## [3.1.11] - 2017-11-08
+### Fixed
+ * Take care of sign of txn amount and amounts of updates are now relative (lbryio/lbry#947)
+ * Fixed KeyError in `claimhistory` for transferred claim (https://github.com/lbryio/lbryum/issues/168)
+ * Fixed race condition when sending a transaction
+ * Fixed filtering by txid and/or nout in `getnameclaims`
+
+### Changed
+ * Bumped `lbryschema` requirement to 0.0.14 [see changelog](https://github.com/lbryio/lbryschema/blob/master/CHANGELOG.md#0014---2017-11-08)
+ * Use `threading.Lock` to prevent overlapping `send_tx` calls
+ * Block returning from `send_tx` on the transaction being added to the wallet.
+
+### Added
+ * Added `skip_validate_signatures` parameter to `getnameclaims`
 
 
 ## [3.1.10] - 2017-10-25
