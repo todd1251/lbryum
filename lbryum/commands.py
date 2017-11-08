@@ -1499,8 +1499,8 @@ class Commands(object):
 
         name_claims = []
 
-        # list of claim ids of claims in the wallet
-        claim_ids = [c['claim_id'] for c in result]
+        # set of claim ids of claims in the wallet
+        claim_ids = {c['claim_id'] for c in result}
 
         # dictionary of claims (not including supports) in the wallet, keyed by claim id
         claims = {}
@@ -1524,8 +1524,11 @@ class Commands(object):
             if claim_id and claim_id != claim['claim_id']:
                 continue
             # if we're looking for a specific claim by its outpoint, skip all other claims
-            if txid is not None and nout is not None:
-                if claim['txid'] != txid and claim['nout'] != nout:
+            if txid is not None:
+                if claim['txid'] != txid:
+                    continue
+            if nout is not None:
+                if claim['nout'] != nout:
                     continue
             # if transaction is a claim or update (supports don't have a `value`)
             if 'value' in claim:
@@ -1571,7 +1574,7 @@ class Commands(object):
 
         # format (and validate, unless skip_validate_signatures) the resulting claims for return
         for _claim_id, certificate_id in claim_tuples:
-            if certificate_id:
+            if certificate_id and certificate_id in claims:
                 certificate = claims[certificate_id]
                 certificate_obj = claim_dict_objs[certificate_id]
             else:
@@ -2336,6 +2339,7 @@ arg_types = {
     'outputs': json_loads,
     'tx_fee': lambda x: str(Decimal(x)) if x is not None else None,
     'amount': lambda x: str(Decimal(x)) if x != '!' else '!',
+    'nout': int
 }
 
 config_variables = {

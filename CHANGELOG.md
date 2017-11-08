@@ -15,6 +15,7 @@ labeled as 2.7.1. Subsequent releases will follow
   * Take care of sign of txn amount and amounts of updates are now relative (lbryio/lbry#947)
   * Fixed KeyError in `claimhistory` for transferred claim (https://github.com/lbryio/lbryum/issues/168)
   * Fixed race condition when sending a transaction
+  * Fixed filtering by txid and/or nout in `getnameclaims`
 
 ### Deprecated
   *
