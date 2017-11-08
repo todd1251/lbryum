@@ -2339,6 +2339,7 @@ arg_types = {
     'outputs': json_loads,
     'tx_fee': lambda x: str(Decimal(x)) if x is not None else None,
     'amount': lambda x: str(Decimal(x)) if x != '!' else '!',
+    'nout': int
 }
 
 config_variables = {
