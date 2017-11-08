@@ -1499,8 +1499,8 @@ class Commands(object):
 
         name_claims = []
 
-        # list of claim ids of claims in the wallet
-        claim_ids = [c['claim_id'] for c in result]
+        # set of claim ids of claims in the wallet
+        claim_ids = {c['claim_id'] for c in result}
 
         # dictionary of claims (not including supports) in the wallet, keyed by claim id
         claims = {}
