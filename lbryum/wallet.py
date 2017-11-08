@@ -1483,10 +1483,11 @@ class Abstract_Wallet(PrintError):
                 and addr not in self.receive_requests.keys()]
 
     def get_unused_address(self, account):
-        addrs = self.get_unused_addresses(account)
-        if addrs:
-            return addrs[0]
-
+        domain = self.get_account_addresses(account, include_change=False)
+        for addr in domain:
+            if not self.history.get(addr) and addr not in self.receive_requests.keys():
+                return addr
+            
 
 class Imported_Wallet(Abstract_Wallet):
     wallet_type = 'imported'
