@@ -1574,7 +1574,7 @@ class Commands(object):
 
         # format (and validate, unless skip_validate_signatures) the resulting claims for return
         for _claim_id, certificate_id in claim_tuples:
-            if certificate_id:
+            if certificate_id and certificate_id in claims:
                 certificate = claims[certificate_id]
                 certificate_obj = claim_dict_objs[certificate_id]
             else:
