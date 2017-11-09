@@ -472,7 +472,6 @@ class Commands(object):
         addr = self.wallet.get_unused_address(account)
         if addr is None:
             addr = self.wallet.create_new_address()
-            self.wallet.storage.write()
         return addr
 
     @command('wp')

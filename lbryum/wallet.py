@@ -1603,6 +1603,7 @@ class Deterministic_Wallet(Abstract_Wallet):
                 account = self.default_account()
             address = account.create_new_address(for_change)
             self.add_address(address)
+            self.storage.write()
             return address
 
     def add_address(self, address):
