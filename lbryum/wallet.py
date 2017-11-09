@@ -1622,7 +1622,11 @@ class Deterministic_Wallet(Abstract_Wallet):
         hist = {}
         for addr in domain:
             if self.is_change(addr):
-                hist[addr] = self.history.get(addr)
+                h = self.history.get(addr)
+                if h:
+                    hist[addr] = h
+                else:
+                    hist[addr] = []
         if hist:
             return sorted(hist.keys(), key=lambda x: len(hist[x]))[0]
         return self.create_new_address(account, for_change=True)
