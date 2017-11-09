@@ -168,9 +168,6 @@ class Abstract_Wallet(PrintError):
         self.load_transactions()
         self.build_reverse_history()
 
-        # load requests
-        self.receive_requests = self.storage.get('payment_requests', {})
-
         # spv
         self.verifier = None
         # Transactions pending verification.  A map from tx hash to transaction
@@ -1479,13 +1476,13 @@ class Abstract_Wallet(PrintError):
     def get_unused_addresses(self, account):
         # fixme: use slots from expired requests
         domain = self.get_account_addresses(account, include_change=False)
-        return [addr for addr in domain if not self.history.get(addr)
-                and addr not in self.receive_requests.keys()]
+        return [addr for addr in domain if not self.history.get(addr)]
 
     def get_unused_address(self, account):
-        addrs = self.get_unused_addresses(account)
-        if addrs:
-            return addrs[0]
+        domain = self.get_account_addresses(account, include_change=False)
+        for addr in domain:
+            if not self.history.get(addr):
+                return addr
 
 
 class Imported_Wallet(Abstract_Wallet):
@@ -1606,6 +1603,7 @@ class Deterministic_Wallet(Abstract_Wallet):
                 account = self.default_account()
             address = account.create_new_address(for_change)
             self.add_address(address)
+            self.storage.write()
             return address
 
     def add_address(self, address):
@@ -1614,6 +1612,20 @@ class Deterministic_Wallet(Abstract_Wallet):
         if self.synchronizer:
             self.synchronizer.add(address)
         self.save_accounts()
+
+    def get_least_used_change_address(self, account=None):
+        """
+        get the least used change address, if none exist generate a fresh one
+        """
+
+        domain = self.get_account_addresses(account, include_change=True)
+        hist = {}
+        for addr in domain:
+            if self.is_change(addr):
+                hist[addr] = self.history.get(addr)
+        if hist:
+            return sorted(hist.keys(), key=lambda x: len(hist[x]))[0]
+        return self.create_new_address(account, for_change=True)
 
     def synchronize(self):
         with self.lock:
