@@ -1483,7 +1483,7 @@ class Abstract_Wallet(PrintError):
         for addr in domain:
             if not self.history.get(addr):
                 return addr
-            
+
 
 class Imported_Wallet(Abstract_Wallet):
     wallet_type = 'imported'
