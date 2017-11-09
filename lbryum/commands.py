@@ -475,6 +475,10 @@ class Commands(object):
         return addr
 
     @command('wp')
+    def getleastusedchangeaddress(self, account=None):
+        return self.wallet.get_least_used_change_address(account)
+
+    @command('wp')
     def payto(self, destination, amount, tx_fee=None, from_addr=None, change_addr=None,
               nocheck=False, unsigned=False):
         """Create a raw transaction. """
@@ -1696,7 +1700,7 @@ class Commands(object):
             return {'error': 'invalid claim address'}
 
         if change_addr is None:
-            change_addr = self.wallet.create_new_address(for_change=True)
+            change_addr = self.wallet.get_least_used_change_address()
         if not base_decode(change_addr, ADDRESS_LENGTH, 58):
             return {'error': 'invalid change address'}
 
@@ -1868,7 +1872,7 @@ class Commands(object):
         if claim_addr is None:
             claim_addr = self.wallet.create_new_address()
         if change_addr is None:
-            change_addr = self.wallet.create_new_address(for_change=True)
+            change_addr = self.wallet.get_least_used_change_address()
 
         claim_id = decode_claim_id_hex(claim_id)
         amount = int(COIN * amount)
@@ -1975,7 +1979,7 @@ class Commands(object):
             return {'error': 'invalid claim address'}
 
         if change_addr is None:
-            change_addr = self.wallet.create_new_address(for_change=True)
+            change_addr = self.wallet.get_least_used_change_address()
         if claim_id is None or txid is None or nout is None:
             claims = self.getnameclaims(skip_validate_signatures=True)
             for claim in claims:

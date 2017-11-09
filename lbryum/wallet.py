@@ -1613,6 +1613,20 @@ class Deterministic_Wallet(Abstract_Wallet):
             self.synchronizer.add(address)
         self.save_accounts()
 
+    def get_least_used_change_address(self, account=None):
+        """
+        get the least used change address, if none exist generate a fresh one
+        """
+
+        domain = self.get_account_addresses(account, include_change=True)
+        hist = {}
+        for addr in domain:
+            if self.is_change(addr):
+                hist[addr] = self.history.get(addr)
+        if hist:
+            return sorted(hist.keys(), key=lambda x: len(hist[x]))[0]
+        return self.create_new_address(account, for_change=True)
+
     def synchronize(self):
         with self.lock:
             for account in self.accounts.values():
