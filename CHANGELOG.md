@@ -22,11 +22,12 @@ labeled as 2.7.1. Subsequent releases will follow
 ### Changed
   * Improved speed of `getunusedaddress`
   * Moved storage.write call in `getunusedaddress` to `Deterministic_Wallet`
-  * By default use the least used change address rather than generating new ones for claims
+  * By default use the least used change address rather than generating new ones for claims.
+  * Only consider addresses with less than 100 utxos for re-use.
 
 ### Added
   * Added `getleastusedchangeaddress` command
-  *
+  * Added `getleastusedaddress` command
 
 ### Removed
   *
