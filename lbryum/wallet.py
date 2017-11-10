@@ -1604,7 +1604,8 @@ class Deterministic_Wallet(Abstract_Wallet):
             address = account.create_new_address(for_change)
             self.add_address(address)
             self.storage.write()
-            return address
+        log.info("created address %s", address)
+        return address
 
     def add_address(self, address):
         if address not in self.history:
@@ -1613,23 +1614,35 @@ class Deterministic_Wallet(Abstract_Wallet):
             self.synchronizer.add(address)
         self.save_accounts()
 
-    def get_least_used_change_address(self, account=None):
+    def get_least_used_address(self, account=None, for_change=False, max_count=100):
         """
-        get the least used change address, if none exist generate a fresh one
+        get the least used address, if none exist generate a fresh one
+
+        :param account: account number, default None
+        :param for_change: is change address
+        :param max_count: maximum history count on an address, default of 100
+                          lbryum server used to have a limit of 1000 utxos per address
+                          it would be nice to be able to re-enable it, so let's set this
+                          to 100 and gradually distribute addresses more optimally
+        :return:
         """
 
-        domain = self.get_account_addresses(account, include_change=True)
+        domain = self.get_account_addresses(account, include_change=for_change)
         hist = {}
         for addr in domain:
-            if self.is_change(addr):
+            if for_change != self.is_change(addr):
+                continue
+            else:
                 h = self.history.get(addr)
-                if h:
+                if h and len(h) >= max_count:
+                    continue
+                elif h:
                     hist[addr] = h
                 else:
                     hist[addr] = []
         if hist:
             return sorted(hist.keys(), key=lambda x: len(hist[x]))[0]
-        return self.create_new_address(account, for_change=True)
+        return self.create_new_address(account, for_change=for_change)
 
     def synchronize(self):
         with self.lock:

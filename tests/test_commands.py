@@ -35,7 +35,7 @@ class MocWallet(object):
     def create_new_address(self, **kwargs):
         return "bScaWvgzAzFXzAcVgDDARfo9RFhdrm4pVc"
 
-    def get_least_used_change_address(self, account=None):
+    def get_least_used_address(self, account=None, for_change=False):
         return self.create_new_address()
 
 
