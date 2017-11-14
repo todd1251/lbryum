@@ -2,7 +2,7 @@ import os
 import urllib
 import socket
 import logging
-
+import lbryschema
 from lbryum import lbrycrd
 from lbryum.util import hex_to_int, PrintError, int_to_hex, rev_hex
 from lbryum.hashing import hash_encode, Hash, PoWHash
@@ -29,6 +29,7 @@ class LbryCrd(PrintError):
         self._MAX_TARGET = blockchain_params[self.BLOCKCHAIN_NAME]['max_target']
         self._N_TARGET_TIMESPAN = blockchain_params[self.BLOCKCHAIN_NAME]['target_timespan']
         self._GENESIS_BITS = blockchain_params[self.BLOCKCHAIN_NAME]['genesis_bits']
+        lbryschema.BLOCKCHAIN_NAME = self.BLOCKCHAIN_NAME
 
     @property
     def MAX_TARGET(self):
