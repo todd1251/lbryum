@@ -4,7 +4,7 @@ from ecdsa.curves import SECP256k1
 import hashlib
 import logging
 
-from lbryschema.address import hash_160_bytes_to_address
+from lbryschema.address import hash_160_bytes_to_address, public_key_to_address
 from lbryum.constants import TYPE_SCRIPT, TYPE_PUBKEY, TYPE_UPDATE, TYPE_SUPPORT, TYPE_CLAIM
 from lbryum.constants import TYPE_ADDRESS, NO_SIGNATURE
 from lbryum.opcodes import opcodes, match_decoded, script_GetOp
@@ -12,7 +12,7 @@ from lbryum.bcd_data_stream import BCDataStream
 from lbryum.hashing import Hash, hash_160, hash_encode
 from lbryum.lbrycrd import bc_address_to_hash_160, op_push
 from lbryum.lbrycrd import address_from_private_key, point_to_ser, MyVerifyingKey, MySigningKey
-from lbryum.lbrycrd import public_key_to_bc_address, regenerate_key, public_key_from_private_key
+from lbryum.lbrycrd import regenerate_key, public_key_from_private_key
 from lbryum.util import print_error, profiler, var_int, int_to_hex, parse_sig
 
 log = logging.getLogger()
@@ -33,7 +33,7 @@ def parse_xpub(x_pubkey):
     else:
         raise BaseException("Cannnot parse pubkey")
     if pubkey:
-        address = public_key_to_bc_address(pubkey.decode('hex'))
+        address = public_key_to_address(pubkey.decode('hex'))
     return pubkey, address
 
 
@@ -676,7 +676,7 @@ class Transaction(object):
             if type & TYPE_ADDRESS:
                 addr = x
             elif type & TYPE_PUBKEY:
-                addr = public_key_to_bc_address(x.decode('hex'))
+                addr = public_key_to_address(x.decode('hex'))
             else:
                 addr = 'SCRIPT ' + x.encode('hex')
             o.append((addr, v))  # consider using yield (addr, v)

@@ -15,7 +15,7 @@ from decimal import Decimal
 from functools import partial
 from unicodedata import normalize
 
-from lbryschema.address import hash_160_bytes_to_address
+from lbryschema.address import hash_160_bytes_to_address, public_key_to_address
 from lbryum import __version__ as LBRYUM_VERSION
 from lbryum.account import ImportedAccount, Multisig_Account, BIP32_Account
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_SUPPORT, TYPE_UPDATE, TYPE_PUBKEY
@@ -31,7 +31,7 @@ from lbryum.version import NEW_SEED_VERSION
 from lbryum.lbrycrd import regenerate_key, is_address, is_compressed, pw_encode, pw_decode
 from lbryum.lbrycrd import is_new_seed, xpub_from_xprv, bip32_private_key
 from lbryum.lbrycrd import encode_claim_id_hex, deserialize_xkey, claim_id_hash, is_private_key
-from lbryum.lbrycrd import public_key_from_private_key, public_key_to_bc_address
+from lbryum.lbrycrd import public_key_from_private_key
 from lbryum.lbrycrd import bip32_public_derivation, bip32_private_derivation, bip32_root
 
 log = logging.getLogger(__name__)
@@ -314,7 +314,7 @@ class Abstract_Wallet(PrintError):
         for k, v in self.imported_keys.items():
             sec = pw_decode(v, password)
             pubkey = public_key_from_private_key(sec)
-            address = public_key_to_bc_address(pubkey.decode('hex'))
+            address = public_key_to_address(pubkey.decode('hex'))
             if address != k:
                 raise InvalidPassword()
             self.import_key(sec, password)
@@ -381,7 +381,7 @@ class Abstract_Wallet(PrintError):
         assert self.can_import(), 'This wallet cannot import private keys'
         try:
             pubkey = public_key_from_private_key(sec)
-            address = public_key_to_bc_address(pubkey.decode('hex'))
+            address = public_key_to_address(pubkey.decode('hex'))
         except Exception:
             raise Exception('Invalid private key')
 
@@ -467,7 +467,7 @@ class Abstract_Wallet(PrintError):
         return key.sign_message(message, compressed, address)
 
     def decrypt_message(self, pubkey, message, password):
-        address = public_key_to_bc_address(pubkey.decode('hex'))
+        address = public_key_to_address(pubkey.decode('hex'))
         keys = self.get_private_key(address, password)
         secret = keys[0]
         ec = regenerate_key(secret)
@@ -863,7 +863,7 @@ class Abstract_Wallet(PrintError):
                 if _type & TYPE_ADDRESS:
                     addr = x
                 elif _type & TYPE_PUBKEY:
-                    addr = public_key_to_bc_address(x.decode('hex'))
+                    addr = public_key_to_address(x.decode('hex'))
                 else:
                     addr = None
                 if addr and self.is_mine(addr):
@@ -1433,7 +1433,7 @@ class Abstract_Wallet(PrintError):
 
     def get_private_key_from_xpubkey(self, x_pubkey, password):
         if x_pubkey[0:2] in ['02', '03', '04']:
-            addr = public_key_to_bc_address(x_pubkey.decode('hex'))
+            addr = public_key_to_address(x_pubkey.decode('hex'))
             if self.is_mine(addr):
                 return self.get_private_key(addr, password)[0]
         elif x_pubkey[0:2] == 'ff':
@@ -1454,7 +1454,7 @@ class Abstract_Wallet(PrintError):
 
     def can_sign_xpubkey(self, x_pubkey):
         if x_pubkey[0:2] in ['02', '03', '04']:
-            addr = public_key_to_bc_address(x_pubkey.decode('hex'))
+            addr = public_key_to_address(x_pubkey.decode('hex'))
             return self.is_mine(addr)
         elif x_pubkey[0:2] == 'ff':
             if not isinstance(self, BIP32_Wallet):

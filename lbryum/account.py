@@ -1,13 +1,13 @@
 import logging
 
-from lbryschema.address import hash_160_bytes_to_address
+from lbryschema.address import hash_160_bytes_to_address, public_key_to_address
 
 from lbryum.util import rev_hex, int_to_hex, is_extended_pubkey
 from lbryum.hashing import hash_160
 from lbryum.base import DecodeBase58Check, EncodeBase58Check
 from lbryum.transaction import Transaction
 from lbryum.lbrycrd import pw_decode, pw_encode, address_from_private_key
-from lbryum.lbrycrd import public_key_to_bc_address, deserialize_xkey, bip32_public_derivation
+from lbryum.lbrycrd import deserialize_xkey, bip32_public_derivation
 from lbryum.lbrycrd import CKD_pub, bip32_private_key
 from lbryum.errors import InvalidPassword
 
@@ -57,7 +57,7 @@ class Account(object):
         return address
 
     def pubkeys_to_address(self, pubkey):
-        return public_key_to_bc_address(pubkey.decode('hex'))
+        return public_key_to_address(pubkey.decode('hex'))
 
     def has_change(self):
         return True

@@ -12,7 +12,7 @@ from ecdsa.ecdsa import curve_secp256k1, generator_secp256k1
 from ecdsa.ellipticcurve import Point
 from ecdsa.util import number_to_string, string_to_number
 
-from lbryschema.address import hash_160_bytes_to_address
+from lbryschema.address import hash_160_bytes_to_address, public_key_to_address
 from lbryum import msqr, version
 from lbryum.base import base_decode, base_encode, EncodeBase58Check, DecodeBase58Check, __b58chars
 from lbryum.util import print_error, rev_hex, var_int, int_to_hex
@@ -151,11 +151,6 @@ def i2o_ECPublicKey(pubkey, compressed=False):
 # functions from pywallet
 
 
-def public_key_to_bc_address(public_key):
-    h160 = hash_160(public_key)
-    return hash_160_bytes_to_address(h160)
-
-
 def bc_address_to_hash_160(addr):
     bytes = base_decode(addr, 25, base=58)
     addr_without_checksum, addr_checksum = bytes[:21], bytes[21:]
@@ -222,7 +217,7 @@ def public_key_from_private_key(sec):
 
 def address_from_private_key(sec):
     public_key = public_key_from_private_key(sec)
-    address = public_key_to_bc_address(public_key.decode('hex'))
+    address = public_key_to_address(public_key.decode('hex'))
     return address
 
 
@@ -417,7 +412,7 @@ class EC_KEY(object):
         public_key.verify_digest(sig[1:], h, sigdecode=ecdsa.util.sigdecode_string)
         pubkey = point_to_ser(public_key.pubkey.point, compressed)
         # check that we get the original signing address
-        addr = public_key_to_bc_address(pubkey)
+        addr = public_key_to_address(pubkey)
         if address != addr:
             raise Exception("Bad signature")
 
