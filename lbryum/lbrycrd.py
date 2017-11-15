@@ -209,19 +209,6 @@ def address_from_private_key(sec):
     return address
 
 
-def is_address(addr):
-    ADDRESS_RE = re.compile('[1-9A-HJ-NP-Za-km-z]{26,}\\Z')
-    if not ADDRESS_RE.match(addr):
-        return False
-    try:
-        addrtype, h = address_to_hash_160(addr)
-    except Exception:
-        return False
-    if addrtype not in [0, 5]:
-        return False
-    return addr == hash_160_bytes_to_address(h, addrtype)
-
-
 def is_private_key(key):
     try:
         k = ASecretToSecret(key)

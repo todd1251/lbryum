@@ -1,12 +1,12 @@
 import binascii
 import unittest
 
-from lbryschema.address import hash_160_bytes_to_address, address_to_hash_160
+from lbryschema.address import hash_160_bytes_to_address, address_to_hash_160, is_address
 
 from lbryum import claims
 from lbryum import commands
 from lbryum.hashing import Hash, PoWHash
-from lbryum.lbrycrd import claim_id_hash, is_address
+from lbryum.lbrycrd import claim_id_hash
 from lbryum.util import rev_hex
 
 
