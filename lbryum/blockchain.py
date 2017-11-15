@@ -3,7 +3,6 @@ import urllib
 import socket
 import logging
 import lbryschema
-from lbryum import lbrycrd
 from lbryum.util import hex_to_int, PrintError, int_to_hex, rev_hex
 from lbryum.hashing import hash_encode, Hash, PoWHash
 from lbryum.errors import ChainValidationError

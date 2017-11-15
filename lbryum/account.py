@@ -1,10 +1,10 @@
 import logging
 
 from lbryschema.address import hash_160_bytes_to_address, public_key_to_address
+from lbryschema.base import b58encode_with_checksum, b58decode_strip_checksum
 
 from lbryum.util import rev_hex, int_to_hex, is_extended_pubkey
 from lbryum.hashing import hash_160
-from lbryum.base import DecodeBase58Check, EncodeBase58Check
 from lbryum.transaction import Transaction
 from lbryum.lbrycrd import pw_decode, pw_encode, address_from_private_key
 from lbryum.lbrycrd import deserialize_xkey, bip32_public_derivation
@@ -21,8 +21,6 @@ class Account(object):
         # addresses will not be stored on disk
         self.receiving_addresses = map(self.pubkeys_to_address, self.receiving_pubkeys)
         self.change_addresses = map(self.pubkeys_to_address, self.change_pubkeys)
-
-
 
     def dump(self):
         return {'receiving': self.receiving_pubkeys, 'change': self.change_pubkeys}
@@ -261,14 +259,14 @@ class BIP32_Account(Account):
         # unsorted
         s = ''.join(map(lambda x: int_to_hex(x, 2), (for_change, n)))
         xpubs = self.get_master_pubkeys()
-        return map(lambda xpub: 'ff' + DecodeBase58Check(xpub).encode('hex') + s, xpubs)
+        return map(lambda xpub: 'ff' + b58decode_strip_checksum(xpub).encode('hex') + s, xpubs)
 
     @classmethod
     def parse_xpubkey(cls, pubkey):
         assert is_extended_pubkey(pubkey)
         pk = pubkey.decode('hex')
         pk = pk[1:]
-        xkey = EncodeBase58Check(pk[0:78])
+        xkey = b58encode_with_checksum(pk[0:78])
         dd = pk[78:]
         s = []
         while dd:

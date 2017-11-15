@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import hmac
-import re
 import struct
 import logging
 import aes
@@ -12,10 +11,11 @@ from ecdsa.ecdsa import curve_secp256k1, generator_secp256k1
 from ecdsa.ellipticcurve import Point
 from ecdsa.util import number_to_string, string_to_number
 
-from lbryschema.address import hash_160_bytes_to_address, public_key_to_address
-from lbryschema.address import address_to_hash_160
+from lbryschema.address import public_key_to_address
+from lbryschema.schema import B58_CHARS
+from lbryschema.base import b58encode_with_checksum, b58decode_strip_checksum
+
 from lbryum import msqr, version
-from lbryum.base import base_decode, base_encode, EncodeBase58Check, DecodeBase58Check, __b58chars
 from lbryum.util import print_error, rev_hex, var_int, int_to_hex
 from lbryum.hashing import Hash, sha256, hash_160, hmac_sha_512
 from lbryum.errors import InvalidPassword
@@ -153,11 +153,11 @@ def SecretToASecret(secret, compressed=False, addrtype=0):
     vchIn = chr((addrtype + 128) & 255) + secret
     if compressed:
         vchIn += '\01'
-    return EncodeBase58Check(vchIn)
+    return b58encode_with_checksum(vchIn)
 
 
 def ASecretToSecret(key, addrtype=0):
-    vch = DecodeBase58Check(key)
+    vch = b58decode_strip_checksum(key)
     if vch and vch[0] == chr((addrtype + 128) & 255):
         return vch[1:]
     elif is_minikey(key):
@@ -219,7 +219,7 @@ def is_minikey(text):
     # suffixed with '?' have its SHA256 hash begin with a zero byte.
     # They are widely used in Casascius physical bitoins.
     return (len(text) >= 20 and text[0] == 'S'
-            and all(c in __b58chars for c in text)
+            and all(c in B58_CHARS for c in text)
             and ord(sha256(text + '?')[0]) == 0)
 
 
@@ -522,7 +522,7 @@ def _get_headers(testnet):
 
 
 def deserialize_xkey(xkey):
-    xkey = DecodeBase58Check(xkey)
+    xkey = b58decode_strip_checksum(xkey)
     assert len(xkey) == 78
 
     xkey_header = xkey[0:4].encode('hex')
@@ -565,7 +565,7 @@ def xpub_from_xprv(xprv, testnet=False):
     K, cK = get_pubkeys_from_secret(k)
     header_pub, _ = _get_headers(testnet)
     xpub = header_pub.decode('hex') + chr(depth) + fingerprint + child_number + c + cK
-    return EncodeBase58Check(xpub)
+    return b58encode_with_checksum(xpub)
 
 
 def bip32_root(seed, testnet=False):
@@ -577,7 +577,7 @@ def bip32_root(seed, testnet=False):
     xprv = (header_priv + "00" + "00000000" + "00000000").decode("hex") + master_c + chr(
         0) + master_k
     xpub = (header_pub + "00" + "00000000" + "00000000").decode("hex") + master_c + cK
-    return EncodeBase58Check(xprv), EncodeBase58Check(xpub)
+    return b58encode_with_checksum(xprv), b58encode_with_checksum(xpub)
 
 
 def xpub_from_pubkey(cK, testnet=False):
@@ -585,7 +585,7 @@ def xpub_from_pubkey(cK, testnet=False):
     assert cK[0] in ['\x02', '\x03']
     master_c = chr(0) * 32
     xpub = (header_pub + "00" + "00000000" + "00000000").decode("hex") + master_c + cK
-    return EncodeBase58Check(xpub)
+    return b58encode_with_checksum(xpub)
 
 
 def bip32_private_derivation(xprv, branch, sequence, testnet=False):
@@ -609,7 +609,7 @@ def bip32_private_derivation(xprv, branch, sequence, testnet=False):
     K, cK = get_pubkeys_from_secret(k)
     xprv = header_priv.decode('hex') + chr(depth) + fingerprint + child_number + c + chr(0) + k
     xpub = header_pub.decode('hex') + chr(depth) + fingerprint + child_number + c + cK
-    return EncodeBase58Check(xprv), EncodeBase58Check(xpub)
+    return b58encode_with_checksum(xprv), b58encode_with_checksum(xpub)
 
 
 def bip32_public_derivation(xpub, branch, sequence, testnet=False):
@@ -628,7 +628,7 @@ def bip32_public_derivation(xpub, branch, sequence, testnet=False):
     fingerprint = hash_160(parent_cK)[0:4]
     child_number = ("%08X" % i).decode('hex')
     xpub = header_pub.decode('hex') + chr(depth) + fingerprint + child_number + c + cK
-    return EncodeBase58Check(xpub)
+    return b58encode_with_checksum(xpub)
 
 
 def bip32_private_key(sequence, k, chain):
