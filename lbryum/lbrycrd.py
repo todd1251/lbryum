@@ -13,6 +13,7 @@ from ecdsa.ellipticcurve import Point
 from ecdsa.util import number_to_string, string_to_number
 
 from lbryschema.address import hash_160_bytes_to_address, public_key_to_address
+from lbryschema.address import address_to_hash_160
 from lbryum import msqr, version
 from lbryum.base import base_decode, base_encode, EncodeBase58Check, DecodeBase58Check, __b58chars
 from lbryum.util import print_error, rev_hex, var_int, int_to_hex
@@ -151,19 +152,6 @@ def i2o_ECPublicKey(pubkey, compressed=False):
 # functions from pywallet
 
 
-def bc_address_to_hash_160(addr):
-    bytes = base_decode(addr, 25, base=58)
-    addr_without_checksum, addr_checksum = bytes[:21], bytes[21:]
-    if Hash(addr_without_checksum)[:4] != addr_checksum:
-        raise Exception("Invalid address checksum")
-    if bytes[0] == chr(PUBKEY_ADDRESS[1]):
-        return PUBKEY_ADDRESS[0], bytes[1:21]
-    elif bytes[0] == chr(SCRIPT_ADDRESS[1]):
-        return SCRIPT_ADDRESS[0], bytes[1:21]
-    else:
-        raise Exception("Invalid address prefix")
-
-
 def PrivKeyToSecret(privkey):
     return privkey[9:9 + 32]
 
@@ -230,7 +218,7 @@ def is_address(addr):
     if not ADDRESS_RE.match(addr):
         return False
     try:
-        addrtype, h = bc_address_to_hash_160(addr)
+        addrtype, h = address_to_hash_160(addr)
     except Exception:
         return False
     if addrtype not in [0, 5]:

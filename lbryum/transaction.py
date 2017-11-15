@@ -5,12 +5,14 @@ import hashlib
 import logging
 
 from lbryschema.address import hash_160_bytes_to_address, public_key_to_address
+from lbryschema.address import address_to_hash_160
+
 from lbryum.constants import TYPE_SCRIPT, TYPE_PUBKEY, TYPE_UPDATE, TYPE_SUPPORT, TYPE_CLAIM
 from lbryum.constants import TYPE_ADDRESS, NO_SIGNATURE
 from lbryum.opcodes import opcodes, match_decoded, script_GetOp
 from lbryum.bcd_data_stream import BCDataStream
 from lbryum.hashing import Hash, hash_160, hash_encode
-from lbryum.lbrycrd import bc_address_to_hash_160, op_push
+from lbryum.lbrycrd import op_push
 from lbryum.lbrycrd import address_from_private_key, point_to_ser, MyVerifyingKey, MySigningKey
 from lbryum.lbrycrd import regenerate_key, public_key_from_private_key
 from lbryum.util import print_error, profiler, var_int, int_to_hex, parse_sig
@@ -436,7 +438,7 @@ class Transaction(object):
         if output_type & TYPE_SCRIPT:
             script += addr.encode('hex')
         elif output_type & TYPE_ADDRESS:  # op_2drop, op_drop
-            addrtype, hash_160 = bc_address_to_hash_160(addr)
+            addrtype, hash_160 = address_to_hash_160(addr)
             if addrtype == 0:
                 script += '76a9'  # op_dup, op_hash_160
                 script += push_script(hash_160.encode('hex'))
@@ -483,7 +485,7 @@ class Transaction(object):
             if not p2sh:
                 x_pubkey = pubkeys[0]
                 if x_pubkey is None:
-                    addrtype, h160 = bc_address_to_hash_160(txin['address'])
+                    addrtype, h160 = address_to_hash_160(txin['address'])
                     x_pubkey = 'fd' + (chr(addrtype) + h160).encode('hex')
                 script += push_script(x_pubkey)
             else:
