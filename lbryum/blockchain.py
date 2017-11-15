@@ -29,6 +29,8 @@ class LbryCrd(PrintError):
         self._MAX_TARGET = blockchain_params[self.BLOCKCHAIN_NAME]['max_target']
         self._N_TARGET_TIMESPAN = blockchain_params[self.BLOCKCHAIN_NAME]['target_timespan']
         self._GENESIS_BITS = blockchain_params[self.BLOCKCHAIN_NAME]['genesis_bits']
+
+        # this will configure the address prefixes for validating/encoding/decoding addresses
         lbryschema.BLOCKCHAIN_NAME = self.BLOCKCHAIN_NAME
 
     @property
@@ -289,16 +291,6 @@ class LbryCrdReg(LbryCrd):
 
 def get_blockchain(config, network):
     chain = config.get('chain', 'lbrycrd_main')
-
-    # set the script and pubkey address prefixes depending on which chain is being used
-    script_address = blockchain_params[chain]['script_address']
-    script_address_prefix = blockchain_params[chain]['script_address_prefix']
-    pubkey_address = blockchain_params[chain]['pubkey_address']
-    pubkey_address_prefix = blockchain_params[chain]['pubkey_address_prefix']
-
-    lbrycrd.SCRIPT_ADDRESS = (script_address, script_address_prefix)
-    lbrycrd.PUBKEY_ADDRESS = (pubkey_address, pubkey_address_prefix)
-
     if chain == 'lbrycrd_main':
         return LbryCrd(config, network)
     elif chain == 'lbrycrd_test':

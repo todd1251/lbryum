@@ -22,13 +22,6 @@ from lbryum.errors import InvalidPassword
 
 log = logging.getLogger(__name__)
 
-# address prefixes are set when the blockchain is initialized by blockchain.get_blockchain
-# the default values are for lbrycrd_main
-global PUBKEY_ADDRESS
-global SCRIPT_ADDRESS
-PUBKEY_ADDRESS = (0, 85)
-SCRIPT_ADDRESS = (5, 122)
-
 # AES encryption
 EncodeAES = lambda secret, s: base64.b64encode(aes.encryptData(secret, s))
 DecodeAES = lambda secret, e: aes.decryptData(secret, base64.b64decode(e))
