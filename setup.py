@@ -19,7 +19,7 @@ requires = [
     'appdirs',
     'protobuf',
     'jsonschema',
-    'lbryschema==0.0.15rc1',
+    'lbryschema==0.0.15rc2',
 ]
 
 console_scripts = [
