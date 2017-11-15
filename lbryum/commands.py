@@ -17,6 +17,7 @@ from lbryschema.decode import smart_decode
 from lbryschema.error import DecodeError
 from lbryschema.signer import SECP256k1, get_signer
 from lbryschema.uri import URIParseError, parse_lbry_uri
+from lbryschema.address import hash_160_bytes_to_address
 
 from lbryum import __version__
 from lbryum.contacts import Contacts
@@ -24,7 +25,7 @@ from lbryum.constants import COIN, TYPE_ADDRESS, TYPE_CLAIM, TYPE_SUPPORT, TYPE_
 from lbryum.constants import RECOMMENDED_CLAIMTRIE_HASH_CONFIRMS, MAX_BATCH_QUERY_SIZE
 from lbryum.hashing import Hash, hash_160
 from lbryum.claims import verify_proof
-from lbryum.lbrycrd import hash_160_to_bc_address, is_address, decode_claim_id_hex
+from lbryum.lbrycrd import is_address, decode_claim_id_hex
 from lbryum.lbrycrd import encode_claim_id_hex, encrypt_message, public_key_from_private_key
 from lbryum.lbrycrd import claim_id_hash, verify_message
 from lbryum.base import base_decode
@@ -256,7 +257,7 @@ class Commands(object):
         """Create multisig address"""
         assert isinstance(pubkeys, list), (type(num), type(pubkeys))
         redeem_script = Transaction.multisig_script(pubkeys, num)
-        address = hash_160_to_bc_address(hash_160(redeem_script.decode('hex')), 5)
+        address = hash_160_bytes_to_address(hash_160(redeem_script.decode('hex')), 5)
         return {'address': address, 'redeemScript': redeem_script}
 
     @command('w')

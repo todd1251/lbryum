@@ -4,12 +4,13 @@ from ecdsa.curves import SECP256k1
 import hashlib
 import logging
 
+from lbryschema.address import hash_160_bytes_to_address
 from lbryum.constants import TYPE_SCRIPT, TYPE_PUBKEY, TYPE_UPDATE, TYPE_SUPPORT, TYPE_CLAIM
 from lbryum.constants import TYPE_ADDRESS, NO_SIGNATURE
 from lbryum.opcodes import opcodes, match_decoded, script_GetOp
 from lbryum.bcd_data_stream import BCDataStream
 from lbryum.hashing import Hash, hash_160, hash_encode
-from lbryum.lbrycrd import hash_160_to_bc_address, bc_address_to_hash_160, op_push
+from lbryum.lbrycrd import bc_address_to_hash_160, op_push
 from lbryum.lbrycrd import address_from_private_key, point_to_ser, MyVerifyingKey, MySigningKey
 from lbryum.lbrycrd import public_key_to_bc_address, regenerate_key, public_key_from_private_key
 from lbryum.util import print_error, profiler, var_int, int_to_hex, parse_sig
@@ -28,7 +29,7 @@ def parse_xpub(x_pubkey):
         addrtype = ord(x_pubkey[2:4].decode('hex'))
         hash160 = x_pubkey[4:].decode('hex')
         pubkey = None
-        address = hash_160_to_bc_address(hash160, addrtype)
+        address = hash_160_bytes_to_address(hash160, addrtype)
     else:
         raise BaseException("Cannnot parse pubkey")
     if pubkey:
@@ -101,7 +102,7 @@ def parse_scriptSig(d, bytes):
     d['x_pubkeys'] = x_pubkeys
     d['pubkeys'] = pubkeys
     d['redeemScript'] = redeemScript
-    d['address'] = hash_160_to_bc_address(hash_160(redeemScript.decode('hex')), 5)
+    d['address'] = hash_160_bytes_to_address(hash_160(redeemScript.decode('hex')), 5)
 
 
 class NameClaim(object):
@@ -217,10 +218,10 @@ def get_address_from_output_script(script_bytes):
         output_val = decoded[0][1].encode('hex')
         output_type |= TYPE_PUBKEY
     elif match_decoded(decoded, match_p2pkh):
-        output_val = hash_160_to_bc_address(decoded[2][1])
+        output_val = hash_160_bytes_to_address(decoded[2][1])
         output_type |= TYPE_ADDRESS
     elif match_decoded(decoded, match_p2sh):
-        output_val = hash_160_to_bc_address(decoded[1][1], 5)
+        output_val = hash_160_bytes_to_address(decoded[1][1], 5)
         output_type |= TYPE_ADDRESS
     else:
         output_val = bytes

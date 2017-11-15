@@ -12,6 +12,7 @@ from ecdsa.ecdsa import curve_secp256k1, generator_secp256k1
 from ecdsa.ellipticcurve import Point
 from ecdsa.util import number_to_string, string_to_number
 
+from lbryschema.address import hash_160_bytes_to_address
 from lbryum import msqr, version
 from lbryum.base import base_decode, base_encode, EncodeBase58Check, DecodeBase58Check, __b58chars
 from lbryum.util import print_error, rev_hex, var_int, int_to_hex
@@ -152,21 +153,7 @@ def i2o_ECPublicKey(pubkey, compressed=False):
 
 def public_key_to_bc_address(public_key):
     h160 = hash_160(public_key)
-    return hash_160_to_bc_address(h160)
-
-
-def hash_160_to_bc_address(h160, addrtype=0):
-    if addrtype == PUBKEY_ADDRESS[0]:
-        c = chr(PUBKEY_ADDRESS[1])
-    elif addrtype == SCRIPT_ADDRESS[0]:
-        c = chr(SCRIPT_ADDRESS[1])
-    else:
-        raise Exception("Invalid address prefix")
-
-    vh160 = c + h160
-    h = Hash(vh160)
-    addr = vh160 + h[0:4]
-    return base_encode(addr, base=58)
+    return hash_160_bytes_to_address(h160)
 
 
 def bc_address_to_hash_160(addr):
@@ -253,7 +240,7 @@ def is_address(addr):
         return False
     if addrtype not in [0, 5]:
         return False
-    return addr == hash_160_to_bc_address(h, addrtype)
+    return addr == hash_160_bytes_to_address(h, addrtype)
 
 
 def is_private_key(key):

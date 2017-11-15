@@ -15,6 +15,7 @@ from decimal import Decimal
 from functools import partial
 from unicodedata import normalize
 
+from lbryschema.address import hash_160_bytes_to_address
 from lbryum import __version__ as LBRYUM_VERSION
 from lbryum.account import ImportedAccount, Multisig_Account, BIP32_Account
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_SUPPORT, TYPE_UPDATE, TYPE_PUBKEY
@@ -28,7 +29,7 @@ from lbryum.errors import NotEnoughFunds, InvalidPassword
 from lbryum.verifier import SPV
 from lbryum.version import NEW_SEED_VERSION
 from lbryum.lbrycrd import regenerate_key, is_address, is_compressed, pw_encode, pw_decode
-from lbryum.lbrycrd import is_new_seed, hash_160_to_bc_address, xpub_from_xprv, bip32_private_key
+from lbryum.lbrycrd import is_new_seed, xpub_from_xprv, bip32_private_key
 from lbryum.lbrycrd import encode_claim_id_hex, deserialize_xkey, claim_id_hash, is_private_key
 from lbryum.lbrycrd import public_key_from_private_key, public_key_to_bc_address
 from lbryum.lbrycrd import bip32_public_derivation, bip32_private_derivation, bip32_root
@@ -1445,7 +1446,7 @@ class Abstract_Wallet(PrintError):
                         return bip32_private_key(sequence, k, c)
         elif x_pubkey[0:2] == 'fd':
             addrtype = ord(x_pubkey[2:4].decode('hex'))
-            addr = hash_160_to_bc_address(x_pubkey[4:].decode('hex'), addrtype)
+            addr = hash_160_bytes_to_address(x_pubkey[4:].decode('hex'), addrtype)
             if self.is_mine(addr):
                 return self.get_private_key(addr, password)[0]
         else:
@@ -1462,7 +1463,7 @@ class Abstract_Wallet(PrintError):
             return xpub in [self.master_public_keys[k] for k in self.master_private_keys.keys()]
         elif x_pubkey[0:2] == 'fd':
             addrtype = ord(x_pubkey[2:4].decode('hex'))
-            addr = hash_160_to_bc_address(x_pubkey[4:].decode('hex'), addrtype)
+            addr = hash_160_bytes_to_address(x_pubkey[4:].decode('hex'), addrtype)
             return self.is_mine(addr)
         else:
             raise BaseException("z")
