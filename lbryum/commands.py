@@ -28,7 +28,6 @@ from lbryum.claims import verify_proof
 from lbryum.lbrycrd import decode_claim_id_hex
 from lbryum.lbrycrd import encode_claim_id_hex, encrypt_message, public_key_from_private_key
 from lbryum.lbrycrd import claim_id_hash, verify_message
-from lbryum.base import base_decode
 from lbryum.transaction import Transaction
 from lbryum.transaction import decode_claim_script, deserialize as deserialize_transaction
 from lbryum.transaction import get_address_from_output_script, script_GetOp
@@ -913,7 +912,7 @@ class Commands(object):
     def _validate_signed_claim(claim, claim_address, certificate):
         if not claim.has_signature:
             raise Exception("Claim is not signed")
-        if not base_decode(claim_address, ADDRESS_LENGTH, 58):
+        if not is_address(claim_address):
             raise Exception("Not given a valid claim address")
         try:
             if claim.validate_signature(claim_address, certificate.protobuf):
@@ -1701,12 +1700,12 @@ class Commands(object):
             val = val.decode('hex')
         if claim_addr is None:
             claim_addr = self.wallet.create_new_address()
-        if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
+        if not is_address(claim_addr):
             return {'error': 'invalid claim address'}
 
         if change_addr is None:
             change_addr = self.wallet.get_least_used_address(for_change=True)
-        if not base_decode(change_addr, ADDRESS_LENGTH, 58):
+        if not is_address(change_addr):
             return {'error': 'invalid change address'}
 
         amount = int(COIN * amount)
@@ -1980,7 +1979,7 @@ class Commands(object):
             decoded_claim = None
         if claim_addr is None:
             claim_addr = self.wallet.create_new_address()
-        if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
+        if not is_address(claim_addr):
             return {'error': 'invalid claim address'}
 
         if change_addr is None:
