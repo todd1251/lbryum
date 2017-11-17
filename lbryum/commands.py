@@ -1699,7 +1699,7 @@ class Commands(object):
         if not raw:
             val = val.decode('hex')
         if claim_addr is None:
-            claim_addr = self.wallet.create_new_address()
+            claim_addr = self.wallet.get_least_used_address()
         if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
             return {'error': 'invalid claim address'}
 
@@ -1874,7 +1874,7 @@ class Commands(object):
         """
 
         if claim_addr is None:
-            claim_addr = self.wallet.create_new_address()
+            claim_addr = self.wallet.get_least_used_address()
         if change_addr is None:
             change_addr = self.wallet.get_least_used_address(for_change=True)
 
@@ -1978,7 +1978,7 @@ class Commands(object):
         else:
             decoded_claim = None
         if claim_addr is None:
-            claim_addr = self.wallet.create_new_address()
+            claim_addr = self.wallet.get_least_used_address()
         if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
             return {'error': 'invalid claim address'}
 
@@ -2213,7 +2213,7 @@ class Commands(object):
 
         txid, nout = claim['txid'], claim['nout']
         if return_addr is None:
-            return_addr = self.wallet.create_new_address()
+            return_addr = self.wallet.get_least_used_address()
         if tx_fee is not None:
             tx_fee = int(COIN * tx_fee)
             if tx_fee < 0:
