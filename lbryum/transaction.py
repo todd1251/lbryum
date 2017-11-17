@@ -641,7 +641,7 @@ class Transaction(object):
                     # txin is complete
                     break
                 if x_pubkey in keypairs.keys():
-                    print_error("adding signature for", x_pubkey)
+                    log.debug("adding signature for %s", x_pubkey)
                     # add pubkey to txin
                     txin = self._inputs[i]
                     x_pubkeys = txin['x_pubkeys']
