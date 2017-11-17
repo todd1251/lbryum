@@ -1949,6 +1949,33 @@ class Commands(object):
         return {'name': name, 'certificate_id': certificate_id, 'val': val}
 
     @command('wpn')
+    def updateclaimsbeforeexpiration(self, height, broadcast=True):
+        """
+        Update unexpired claims that will expire by the specified height
+
+        :param height: (int) update claims expiring before or at this block height
+        :param broadcast: (bool) broadcast transactions
+        :returns dictionary, {<outpoint string>: formatted claim result}
+        """
+        claims = self.wallet.get_name_claims(include_abandoned=False, include_supports=True,
+                                             exclude_expired=False)
+        expired = [claim for claim in claims if claim['expired']]
+        pending_expiration = [claim for claim in claims if claim['expiration_height'] <= height]
+        log.warning("There are %i expired claims", len(expired))
+        results = {}
+        for claim in pending_expiration:
+            log.info("Updating lbry://%s#%s (%s)", claim['name'], claim['claim_id'],
+                     claim['category'])
+            outpoint = "%s:%i" % (claim['txid'], claim['nout'])
+            if claim['category'] != 'support':
+                results[outpoint] = self.update(claim['name'], claim['value'],
+                                                claim_id=claim['claim_id'], txid=claim['txid'],
+                                                nout=claim['nout'], broadcast=broadcast)
+            else:
+                results[outpoint] = self.updatesupport(claim['txid'], claim['nout'],
+                                                       broadcast=broadcast)
+        return results
+
     @command('wpn')
     def updatesupport(self, txid, nout, amount=None, broadcast=True,
                       claim_addr=None, tx_fee=None, change_addr=None):
