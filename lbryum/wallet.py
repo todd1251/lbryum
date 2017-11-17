@@ -990,7 +990,8 @@ class Abstract_Wallet(PrintError):
 
         return h2
 
-    def get_name_claims(self, domain=None, include_abandoned=True, include_supports=True):
+    def get_name_claims(self, domain=None, include_abandoned=True, include_supports=True,
+                        exclude_expired=True):
         claims = []
         if domain is None:
             domain = self.get_account_addresses(None)
@@ -1011,6 +1012,8 @@ class Abstract_Wallet(PrintError):
                 if txout[0] & (TYPE_CLAIM | TYPE_UPDATE | TYPE_SUPPORT):
                     local_height = self.get_local_height()
                     expired = tx_height + EXPIRATION_BLOCKS <= local_height
+                    if expired and exclude_expired:
+                        continue
                     output = {
                         'txid': prevout_hash,
                         'nout': int(prevout_n),
