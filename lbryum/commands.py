@@ -2009,7 +2009,8 @@ class Commands(object):
         val = None
 
         out = self._get_input_output_for_updates(name, val, amount, claim_id, txid, nout,
-                                                 claim_addr, change_addr, tx_fee, is_support_renew=True)
+                                                 claim_addr, change_addr, tx_fee,
+                                                 is_support_replace=True)
         if not out['success']:
             return out
         else
@@ -2169,7 +2170,7 @@ class Commands(object):
         }
 
     def _get_input_output_for_updates(name, val, amount, claim_id, txid, nout, claim_addr=None,
-                                      change_addr=None, tx_fee=None, is_support_renew=False):
+                                      change_addr=None, tx_fee=None, is_support_replace=False):
         """
         obtain inputs and outputs when crafting either an update
         or a support replacement
@@ -2178,14 +2179,15 @@ class Commands(object):
         :param val: claim value
         :param amount: claim amount, if amount is None, we keep the same amount
             as the original claim minus the tx fee
-        :param claim_id: claim id to be updated
+        :param claim_id: claim id to be updated or if in the case of support replacements,
+           claim_id of the claim that's being supported
         :param txid: txid of claim to be updated
         :param nout: nout of claim to be updated
         :param claim_addr: specify address to send the claim to
         :param change_addr: specify change address to send change to
         :param tx_fee: specify amount of tx fee to pay
-        :param is_support_renew: False if we are doing an update of a claim. If True,
-            we are renewing a support (abandon previous support and create new
+        :param is_support_replace: False if we are doing an update of a claim. If True,
+            we are replacing a support (abandon previous support and create new
             support in place of it)
 
         :returns a dictionary where key 'success' is True if succesful in obtaining
@@ -2212,7 +2214,7 @@ class Commands(object):
         inputs = [claim_utxo]
         txout_value = claim_utxo['value']
 
-        if is_update:
+        if not is_support_replace:
             claim_tuple = ((name, decoded_claim_id, val), claim_addr)
             claim_type = TYPE_UPDATE
         else:
