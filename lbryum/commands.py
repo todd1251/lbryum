@@ -2123,6 +2123,26 @@ class Commands(object):
                skip_validate_schema=None):
         """
         Update a name claim
+
+        :param name: (str) name of claim being updated
+        :param val: (str) calim value to update to
+        :param amount: (float) amount to update, defaults to the amount in the
+            claim being updated minus tx fees
+        :param certificate_id: claim ID of the certificate associated with the claim
+        :param claim_id: claim ID of the claim being updated
+        :param txid: (str) txid of support transaction to update
+        :param nout: (int) nout of support transaction to update
+        :param broadcast: (bool) broadcast the transaction
+        :param claim_addr: (str) address to send support to
+        :param tx_fee: (float) tx fee
+        :param change_addr: (str) address to send change to
+        :param raw: (bool) default False. If True, val is byte encoded already
+            so do not decode from hex string
+        :param skip_validate_schema:default False. If True, skip validation of
+            claim schema in val, and skip claim signing. Cannot be True if
+            certificate_id is not None
+
+        :returns formatted claim result
         """
 
         if skip_validate_schema and certificate_id:
