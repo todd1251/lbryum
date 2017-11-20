@@ -2077,7 +2077,8 @@ class Commands(object):
 
         supports = self.wallet.get_name_claims(include_supports=True)
         claim_support = [support for support in supports if
-                         support['txid'] == txid and support['nout'] == nout]
+                         support['txid'] == txid and support['nout'] == nout and
+                         support['category'] == 'support']
         if not claim_support:
             return {'success': False, 'reason': 'Support not found for txo %s:%i' % (txid,
                                                                                      nout)}
