@@ -2012,6 +2012,8 @@ class Commands(object):
 
         if change_addr is None:
             change_addr = self.wallet.get_least_used_address(for_change=True)
+        if not base_decode(change_addr, ADDRESS_LENGTH, 58):
+            return {'error': 'invalid change address'}
         if claim_id is None or txid is None or nout is None:
             claims = self.getnameclaims(skip_validate_signatures=True)
             for claim in claims:
