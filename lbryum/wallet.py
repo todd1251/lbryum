@@ -243,7 +243,7 @@ class Abstract_Wallet(PrintError):
             if write:
                 self.storage.write()
 
-    def save_certificate(self, claim_id, private_key, write=False):
+    def save_certificate(self, claim_id, private_key, write=True):
         certificate_keys = self.storage.get('claim_certificates') or {}
         certificate_keys[claim_id] = private_key
         self.storage.put('claim_certificates', certificate_keys)
