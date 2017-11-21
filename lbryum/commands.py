@@ -2030,8 +2030,8 @@ class Commands(object):
     def renewclaimsbeforeexpiration(self, height, broadcast=True):
         """
         Renew unexpired claims that will expire by the specified height.
-        Unexpired claims will be updated, and supports will be spent into
-        an identical support
+        Unexpired claims will be updated to an identical claim, and supports
+        will be spent into an identical support
 
         :param height: (int) update claims expiring before or at this block height
         :param broadcast: (bool) broadcast transactions
@@ -2044,17 +2044,39 @@ class Commands(object):
         log.warning("There are %i expired claims", len(expired))
         results = {}
         for claim in pending_expiration:
-            log.info("Updating lbry://%s#%s (%s)", claim['name'], claim['claim_id'],
-                     claim['category'])
             outpoint = "%s:%i" % (claim['txid'], claim['nout'])
-            if claim['category'] != 'support':
-                results[outpoint] = self.update(claim['name'], claim['value'],
-                                                claim_id=claim['claim_id'], txid=claim['txid'],
-                                                nout=claim['nout'], broadcast=broadcast)
-            else:
-                results[outpoint] = self.updatesupport(claim['txid'], claim['nout'],
-                                                       broadcast=broadcast)
+            results[outpoint] = self._renewclaim(claim, broadcast)
         return results
+
+    @command('wpn')
+    def renewclaim(self, txid, nout, broadcast=True):
+        """
+        Renew claim. Unexpired claims will be udpated to an identical claim
+        and supports will be spent into an identical support.
+
+        :param txid: (str) txid of claim
+        :param nout: (int) nout of claim
+        :param broadcast: (bool) True if broadcasting the claim
+        :returns dictionary: formatted claim result
+        """
+        claims = self.wallet.get_name_claims(include_abandoned=False, include_supports=True,
+                                             exclude_expired=True)
+
+        claims = [claim for claim in claims if claim['txid'] == txid and claim['nout'] == nout]
+        if not claims:
+            raise Exception('no matching claim found for %s:%i', txid, nout)
+        claim = claims[0]
+        return self._renewclaim(claim, broadcast)
+
+    def _renewclaim(self, claim, broadcast=True):
+        log.info("Updating lbry://%s#%s (%s)", claim['name'], claim['claim_id'],
+                 claim['category'])
+        if claim['category'] != 'support':
+            out = self.update(claim['name'], claim['value'], claim_id=claim['claim_id'],
+                              txid=claim['txid'], nout=claim['nout'], broadcast=broadcast)
+        else:
+            out = self.updatesupport(claim['txid'], claim['nout'], broadcast=broadcast)
+        return out
 
     @command('wpn')
     def updatesupport(self, txid, nout, amount=None, broadcast=True,
