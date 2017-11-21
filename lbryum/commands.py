@@ -2027,9 +2027,11 @@ class Commands(object):
         return {'name': name, 'certificate_id': certificate_id, 'val': val}
 
     @command('wpn')
-    def updateclaimsbeforeexpiration(self, height, broadcast=True):
+    def renewclaimsbeforeexpiration(self, height, broadcast=True):
         """
-        Update unexpired claims that will expire by the specified height
+        Renew unexpired claims that will expire by the specified height.
+        Unexpired claims will be updated, and supports will be spent into
+        an identical support
 
         :param height: (int) update claims expiring before or at this block height
         :param broadcast: (bool) broadcast transactions
@@ -2058,7 +2060,7 @@ class Commands(object):
     def updatesupport(self, txid, nout, amount=None, broadcast=True,
                       claim_addr=None, tx_fee=None, change_addr=None):
         """
-        Update a claim support
+        Update a claim support, will spend support into a new support
 
         :param txid: (str) txid of support transaction to update
         :param nout: (int) nout of support transaction to update
