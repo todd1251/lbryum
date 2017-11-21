@@ -1815,6 +1815,56 @@ class Commands(object):
                                                 overwrite_existing=set_default_certificate)
         return result
 
+    @staticmethod
+    def _deserialize_certificate_key(serialized_certificate_info):
+        """
+        :param serialized_certificate_info:
+        :return: certificate claim id hex, pem encoded private key
+        """
+
+        cert_info = serialized_certificate_info[:40]
+        priv_key_info = serialized_certificate_info[40:]
+        return cert_info, priv_key_info.decode('hex')
+
+    @staticmethod
+    def _serialize_certificate_key(certificate_id, pem_private_key):
+        info_str = certificate_id + pem_private_key.encode('hex')
+        return info_str
+
+    @command('wp')
+    def exportcertificateinfo(self, certificate_id):
+        """
+        Export serialized channel signing information
+        """
+
+        if not self.cansignwithcertificate(certificate_id):
+            return {'error': 'certificate private is not in the wallet: %s' % certificate_id}
+        priv_key = self.wallet.get_certificate_signing_key(certificate_id)
+        if not priv_key:
+            return {'error': 'failed to key signing key for %s' % certificate_id}
+        return self._serialize_certificate_key(certificate_id, priv_key)
+
+    @command('wpn')
+    def importcertificateinfo(self, serialized_certificate_info):
+        """
+        Import serialized channel signing information (a claim id to a certificate claim
+        and corresponding private key)
+        """
+
+        certificate_id, signing_key = self._deserialize_certificate_key(serialized_certificate_info)
+
+        if self.cansignwithcertificate(certificate_id):
+            return {'error': 'refusing to overwrite certificate key already in the wallet',
+                    'success': False}
+        certificate_claim = self.getclaimbyid(certificate_id)
+        certificate_claim_obj = ClaimDict.load_dict(certificate_claim['value'])
+        if not certificate_claim_obj.is_certificate:
+            return {'error': 'claim is not a certificate', 'success': False}
+        if not certificate_claim_obj.validate_private_key(signing_key, certificate_id):
+            return {'error': 'private key does not match certificate', 'success': False}
+        self.wallet.save_certificate(certificate_id, signing_key)
+        return {'success': True}
+
     @command('wpn')
     def updateclaimsignature(self, name, amount=None, claim_id=None, certificate_id=None):
         """
