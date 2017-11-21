@@ -1626,6 +1626,27 @@ class Commands(object):
                 pass
         return certificate_claims
 
+    @command('wpn')
+    def getcertificatesforsigning(self, raw=False):
+        """
+        Get certificate claims that are usable for signing, the claims are not necessarily in the
+        wallet
+        """
+
+        my_certs = self.getcertificateclaims(raw=raw)
+        certificate_claim_ids = self.wallet.get_certificate_claim_ids_for_signing()
+        result = []
+        for cert_claim in my_certs:
+            cert_claim['is_mine'] = True
+            result.append(cert_claim)
+            certificate_claim_ids.remove(cert_claim['claim_id'])
+        if certificate_claim_ids:
+            imported_certs = self.getclaimsbyids(certificate_claim_ids, raw=raw)
+            for claim_id, cert_claim in imported_certs.iteritems():
+                cert_claim['is_mine'] = False
+                result.append(cert_claim)
+        return result
+
     def _calculate_fee(self, inputs, outputs, set_tx_fee):
         if set_tx_fee is not None:
             return set_tx_fee
