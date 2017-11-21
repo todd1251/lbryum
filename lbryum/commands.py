@@ -2038,10 +2038,8 @@ class Commands(object):
         :returns dictionary, {<outpoint string>: formatted claim result}
         """
         claims = self.wallet.get_name_claims(include_abandoned=False, include_supports=True,
-                                             exclude_expired=False)
-        expired = [claim for claim in claims if claim['expired']]
+                                             exclude_expired=True)
         pending_expiration = [claim for claim in claims if claim['expiration_height'] <= height]
-        log.warning("There are %i expired claims", len(expired))
         results = {}
         for claim in pending_expiration:
             outpoint = "%s:%i" % (claim['txid'], claim['nout'])
