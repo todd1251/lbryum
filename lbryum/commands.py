@@ -513,7 +513,7 @@ class Commands(object):
 
     @command('wpn')
     def sendclaimtoaddress(self, claim_id, destination, amount, tx_fee=None, change_addr=None,
-                           broadcast=True):
+                           broadcast=True, skip_validate_schema=None):
         claims = self.getnameclaims(raw=True, include_supports=False, claim_id=claim_id,
                                     skip_validate_signatures=True)
         if len(claims) > 1:
@@ -527,10 +527,15 @@ class Commands(object):
         nout = claim['nout']
         claim_name = claim['name']
         claim_val = claim['value']
-        return self.update(claim_name, claim_val, amount=amount, certificate_id=None,
+        certificate_id = None
+        if not skip_validate_schema:
+            decoded = smart_decode(claim_val)
+            if self.cansignwithcertificate(decoded.certificate_id):
+                certificate_id = decoded.certificate_id
+        return self.update(claim_name, claim_val, amount=amount, certificate_id=certificate_id,
                            claim_id=claim_id, txid=txid, nout=nout, broadcast=broadcast,
                            claim_addr=destination, tx_fee=tx_fee, change_addr=change_addr,
-                           raw=False, skip_validate_schema=True)
+                           raw=False, skip_validate_schema=skip_validate_schema)
 
     @command('wp')
     def paytomany(self, outputs, tx_fee=None, from_addr=None, change_addr=None, nocheck=False,
