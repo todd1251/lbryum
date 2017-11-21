@@ -1502,7 +1502,7 @@ class Commands(object):
     def getnameclaims(self, raw=False, include_abandoned=False, include_supports=True,
                       txid=None, nout=None, claim_id=None, skip_validate_signatures=False):
         """
-        Get  my name claims from wallet
+        Get my name claims from wallet
         """
 
         # get the name claims from the wallet
@@ -1608,7 +1608,7 @@ class Commands(object):
             name_claims.append(parsed)
         return name_claims
 
-    @command('wpn')
+    @command('wp')
     def getcertificateclaims(self, raw=False, include_abandoned=False):
         """
         Get my claims containing certificates
@@ -1621,7 +1621,8 @@ class Commands(object):
             try:
                 decoded = smart_decode(claim['value'])
                 if decoded.is_certificate:
-                    cert_result = self.parse_and_validate_claim_result(claim, raw=raw)
+                    cert_result = self.offline_parse_and_validate_claim_result(
+                        claim, None, raw=raw, decoded_claim=decoded, skip_validate_signatures=True)
                     if self.cansignwithcertificate(cert_result['claim_id']):
                         cert_result['can_sign'] = True
                     else:
@@ -1801,6 +1802,7 @@ class Commands(object):
 
         if not parse_lbry_uri(name).is_channel:
             return {'error': 'non compliant uri for certificate'}
+
         secp256k1_private_key = get_signer(SECP256k1).generate().private_key.to_pem()
         claim = ClaimDict.generate_certificate(secp256k1_private_key, curve=SECP256k1)
         encoded_claim = claim.serialized.encode('hex')
@@ -1882,7 +1884,7 @@ class Commands(object):
             result = self.update(name, decoded.serialized, amount=amount, raw=True)
         return result
 
-    @command('wpn')
+    @command('wp')
     def cansignwithcertificate(self, certificate_id):
         """
         Can sign with given claim certificate
