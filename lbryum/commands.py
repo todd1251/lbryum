@@ -1726,7 +1726,7 @@ class Commands(object):
         if not raw:
             val = val.decode('hex')
         if claim_addr is None:
-            claim_addr = self.wallet.create_new_address()
+            claim_addr = self.wallet.get_least_used_address()
         if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
             return {'error': 'invalid claim address'}
 
@@ -1952,7 +1952,7 @@ class Commands(object):
         """
 
         if claim_addr is None:
-            claim_addr = self.wallet.create_new_address()
+            claim_addr = self.wallet.get_least_used_address()
         if change_addr is None:
             change_addr = self.wallet.get_least_used_address(for_change=True)
 
@@ -2027,11 +2027,147 @@ class Commands(object):
         return {'name': name, 'certificate_id': certificate_id, 'val': val}
 
     @command('wpn')
+    def renewclaimsbeforeexpiration(self, height, broadcast=True, skip_validate_schema=False):
+        """
+        Renew unexpired claims that will expire by the specified height.
+        Unexpired claims will be updated to an identical claim, and supports
+        will be spent into an identical support
+
+        :param height: (int) update claims expiring before or at this block height
+        :param skip_validate_schema: (bool) skip validation of schema
+        :param broadcast: (bool) broadcast transactions
+        :returns dictionary, {<outpoint string>: formatted claim result}
+        """
+        claims = self.wallet.get_name_claims(include_abandoned=False, include_supports=True,
+                                             exclude_expired=True)
+        pending_expiration = [claim for claim in claims if claim['expiration_height'] <= height]
+        results = {}
+        for claim in pending_expiration:
+            outpoint = "%s:%i" % (claim['txid'], claim['nout'])
+            results[outpoint] = self._renewclaim(claim, broadcast, skip_validate_schema)
+        return results
+
+    @command('wpn')
+    def renewclaim(self, txid, nout, broadcast=True, skip_validate_schema=False):
+        """
+        Renew claim. Unexpired claims will be udpated to an identical claim
+        and supports will be spent into an identical support.
+
+        :param txid: (str) txid of claim
+        :param nout: (int) nout of claim
+        :param skip_validate_schema: (bool) skip validation of schema
+        :param broadcast: (bool) True if broadcasting the claim
+        :returns dictionary: formatted claim result
+        """
+        claims = self.wallet.get_name_claims(include_abandoned=False, include_supports=True,
+                                             exclude_expired=True)
+        claims = [claim for claim in claims if claim['txid'] == txid and claim['nout'] == nout]
+        if not claims:
+            return {'success': False, 'reason': 'no matching claim found for %s:%i' % (txid, nout)}
+        claim = claims[0]
+        return self._renewclaim(claim, broadcast, skip_validate_schema)
+
+    def _renewclaim(self, claim, broadcast=True, skip_validate_schema=False):
+        log.info("Updating lbry://%s#%s (%s)", claim['name'], claim['claim_id'],
+                 claim['category'])
+        if claim['category'] != 'support':
+            out = self.update(claim['name'], claim['value'], claim_id=claim['claim_id'],
+                              txid=claim['txid'], nout=claim['nout'],
+                              skip_validate_schema=skip_validate_schema, broadcast=broadcast)
+        else:
+            out = self.updatesupport(claim['txid'], claim['nout'], broadcast=broadcast)
+        return out
+
+    @command('wpn')
+    def updatesupport(self, txid, nout, amount=None, broadcast=True,
+                      claim_addr=None, tx_fee=None, change_addr=None):
+        """
+        Update a claim support, will spend support into a new support
+
+        :param txid: (str) txid of support transaction to update
+        :param nout: (int) nout of support transaction to update
+        :param amount: (float) amount to support claim by, defaults to the current amount
+        :param broadcast: (bool) broadcast the transaction
+        :param claim_addr: (str) address to send support to
+        :param tx_fee: (float) tx fee
+        :param change_addr: (str) address to send change to
+        :returns formatted claim result
+        """
+
+        if claim_addr is None:
+            claim_addr = self.wallet.get_least_used_address()
+        if change_addr is None:
+            change_addr = self.wallet.get_least_used_address(for_change=True)
+
+        supports = self.wallet.get_name_claims(include_supports=True)
+        claim_support = [support for support in supports if
+                         support['txid'] == txid and support['nout'] == nout and
+                         support['category'] == 'support']
+        if not claim_support:
+            return {'success': False, 'reason': 'Support not found for txo %s:%i' % (txid,
+                                                                                     nout)}
+        claim_support = claim_support[0]
+        claim_id = claim_support['claim_id']
+        name = claim_support['name']
+        val = None
+
+        out = self._get_input_output_for_updates(name, val, amount, claim_id, txid, nout,
+                                                 claim_addr, change_addr, tx_fee,
+                                                 is_support_replace=True)
+        if not out['success']:
+            return out
+        else:
+            inputs = out['inputs']
+            outputs = out['outputs']
+
+        tx = Transaction.from_io(inputs, outputs)
+        self.wallet.sign_transaction(tx, self._password)
+        if broadcast:
+            success, out = self.wallet.send_tx(tx)
+            if not success:
+                return {"success": False, "reason": out}
+        nout = None
+        amount = 0
+        for i, output in enumerate(tx._outputs):
+            if output[0] & TYPE_SUPPORT:
+                nout = i
+                amount = output[2]
+        return {
+            "success": True,
+            "txid": tx.hash(),
+            "nout": nout,
+            "tx": str(tx),
+            "fee": str(Decimal(tx.get_fee()) / COIN),
+            "amount": str(Decimal(amount) / COIN),
+            "claim_id": claim_id
+        }
+
+    @command('wpn')
     def update(self, name, val, amount=None, certificate_id=None, claim_id=None, txid=None,
                nout=None, broadcast=True, claim_addr=None, tx_fee=None, change_addr=None, raw=None,
                skip_validate_schema=None):
         """
         Update a name claim
+
+        :param name: (str) name of claim being updated
+        :param val: (str) calim value to update to
+        :param amount: (float) amount to update, defaults to the amount in the
+            claim being updated minus tx fees
+        :param certificate_id: claim ID of the certificate associated with the claim
+        :param claim_id: claim ID of the claim being updated
+        :param txid: (str) txid of support transaction to update
+        :param nout: (int) nout of support transaction to update
+        :param broadcast: (bool) broadcast the transaction
+        :param claim_addr: (str) address to send support to
+        :param tx_fee: (float) tx fee
+        :param change_addr: (str) address to send change to
+        :param raw: (bool) default False. If True, val is byte encoded already
+            so do not decode from hex string
+        :param skip_validate_schema:default False. If True, skip validation of
+            claim schema in val, and skip claim signing. Cannot be True if
+            certificate_id is not None
+
+        :returns formatted claim result
         """
 
         if skip_validate_schema and certificate_id:
@@ -2056,7 +2192,7 @@ class Commands(object):
         else:
             decoded_claim = None
         if claim_addr is None:
-            claim_addr = self.wallet.create_new_address()
+            claim_addr = self.wallet.get_least_used_address()
         if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
             return {'error': 'invalid claim address'}
 
@@ -2126,128 +2262,13 @@ class Commands(object):
                         return {'success': False,
                                 'reason': "Cannot sign with certificate %s" % certificate_id}
 
-        decoded_claim_id = decode_claim_id_hex(claim_id)
-
-        if amount is not None:
-            amount = int(COIN * amount)
-            if amount <= 0:
-                return {'success': False, 'reason': 'Amount must be greater than 0'}
-        if tx_fee is not None:
-            tx_fee = int(COIN * tx_fee)
-            if tx_fee < 0:
-                return {'success': False, 'reason': 'tx_fee must be greater than or equal to 0'}
-
-        claim_utxo = self.wallet.get_spendable_claimtrietx_coin(txid, nout)
-        if claim_utxo['is_support']:
-            return {'success': False, 'reason': 'Cannot update a support'}
-
-        inputs = [claim_utxo]
-        txout_value = claim_utxo['value']
-
-        # if amount is not specified, keep the same amount minus the tx fee
-        if amount is None:
-            dummy_outputs = [
-                (
-                    TYPE_ADDRESS | TYPE_UPDATE,
-                    ((name, decoded_claim_id, val), claim_addr),
-                    txout_value
-                )
-            ]
-            fee = self._calculate_fee(inputs, dummy_outputs, tx_fee)
-            if fee >= txout_value:
-                return {
-                    'success': False,
-                    'reason': 'Fee will exceed amount available in original bid. Increase amount'
-                }
-
-            outputs = [
-                (
-                    TYPE_ADDRESS | TYPE_UPDATE,
-                    ((name, decoded_claim_id, val), claim_addr),
-                    txout_value - fee
-                )
-            ]
-
-        elif amount <= 0:
-            return {'success': False, 'reason': 'Amount must be greater than zero'}
-
-        # amount is more than the original bid or equal, we need to get an input
-        elif amount >= txout_value:
-            additional_input_fee = 0
-            if tx_fee is None:
-                claim_input_size = Transaction.estimated_input_size(claim_utxo)
-                additional_input_fee = Transaction.fee_for_size(self.wallet.relayfee(),
-                                                                self.wallet.fee_per_kb(self.config),
-                                                                claim_input_size)
-
-            get_inputs_for_amount = amount - txout_value + additional_input_fee
-            # create a dummy tx for the extra amount in order to get the proper inputs to spend
-            dummy_outputs = [
-                (
-                    TYPE_ADDRESS | TYPE_UPDATE,
-                    ((name, decoded_claim_id, val), claim_addr),
-                    get_inputs_for_amount
-                )
-            ]
-            coins = self.wallet.get_spendable_coins()
-            try:
-                dummy_tx = self.wallet.make_unsigned_transaction(coins, dummy_outputs,
-                                                                 self.config, tx_fee, change_addr)
-            except NotEnoughFunds:
-                return {'success': False, 'reason': 'Not enough funds'}
-
-            # add the unspents to input
-            for i in dummy_tx._inputs:
-                inputs.append(i)
-
-            outputs = [
-                (
-                    TYPE_ADDRESS | TYPE_UPDATE,
-                    ((name, decoded_claim_id, val), claim_addr),
-                    amount
-                )
-            ]
-            # add the change utxos to output
-            for output in dummy_tx._outputs:
-                if not output[0] & TYPE_UPDATE:
-                    outputs.append(output)
-
-        # amount is less than the original bid,
-        # we need to put remainder minus fees in a change address
-        elif amount < txout_value:
-
-            dummy_outputs = [
-                (
-                    TYPE_ADDRESS | TYPE_UPDATE,
-                    ((name, decoded_claim_id, val), claim_addr),
-                    amount
-                ),
-                (
-                    TYPE_ADDRESS,
-                    change_addr,
-                    txout_value - amount
-                )
-            ]
-            fee = self._calculate_fee(inputs, dummy_outputs, tx_fee)
-            if fee > txout_value - amount:
-                return {
-                    'success': False,
-                    'reason': 'Fee will be greater than change amount, use amount=None to expend '
-                              'change as fee'
-                }
-
-            outputs = [
-                (
-                    TYPE_ADDRESS | TYPE_UPDATE,
-                    ((name, decoded_claim_id, val), claim_addr),
-                    amount
-                ),
-                (
-                    TYPE_ADDRESS,
-                    change_addr,
-                    txout_value - amount - fee
-                )
-            ]
+        out = self._get_input_output_for_updates(name, val, amount, claim_id, txid, nout,
+                                                 claim_addr, change_addr, tx_fee)
+        if not out['success']:
+            return out
+        else:
+            inputs = out['inputs']
+            outputs = out['outputs']
 
         tx = Transaction.from_io(inputs, outputs)
         self.wallet.sign_transaction(tx, self._password)
@@ -2273,6 +2294,168 @@ class Commands(object):
             "claim_id": claim_id
         }
 
+    def _get_input_output_for_updates(self, name, val, amount, claim_id, txid, nout,
+                                      claim_addr=None, change_addr=None, tx_fee=None,
+                                      is_support_replace=False):
+        """
+        obtain inputs and outputs when crafting either an update
+        or a support replacement
+
+        :param name: (str) claim name
+        :param val: (str) claim value
+        :param amount: (float) claim amount, if amount is None, we keep the same amount
+            as the original claim minus the tx fee
+        :param claim_id: (str) claim id to be updated or if in the case of support replacements,
+           claim_id of the claim that's being supported
+        :param txid: (str) txid of claim to be updated
+        :param nout: (int) nout of claim to be updated
+        :param claim_addr: (str) specify address to send the claim to
+        :param change_addr: (str) specify change address to send change to
+        :param tx_fee: (float) specify amount of tx fee to pay
+        :param is_support_replace: (bool) False if we are doing an update of a claim. If True,
+            we are replacing a support (abandon previous support and create new
+            support in place of it)
+
+        :returns a dictionary where key 'success' is True if succesful in obtaining
+            inputs and outputs, and False if not. If 'success' is False, there will
+            be a 'reason' field for the failure reaso. If 'success' is True,
+            there will be an 'outputs' field and 'inputs' field.
+        """
+
+        decoded_claim_id = decode_claim_id_hex(claim_id)
+
+        if amount is not None:
+            amount = int(COIN * amount)
+            if amount <= 0:
+                return {'success': False, 'reason': 'Amount must be greater than 0'}
+        if tx_fee is not None:
+            tx_fee = int(COIN * tx_fee)
+            if tx_fee < 0:
+                return {'success': False, 'reason': 'tx_fee must be greater than or equal to 0'}
+
+        claim_utxo = self.wallet.get_spendable_claimtrietx_coin(txid, nout)
+        if not is_support_replace and claim_utxo['is_support']:
+            return {'success': False,
+                    'reason': 'Cannot update a support, is_support_replace must be True'}
+
+        inputs = [claim_utxo]
+        txout_value = claim_utxo['value']
+
+        if not is_support_replace:
+            claim_tuple = ((name, decoded_claim_id, val), claim_addr)
+            claim_type = TYPE_UPDATE
+        else:
+            # we are spending a support to make a new support
+            claim_tuple = ((name, decoded_claim_id), claim_addr)
+            claim_type = TYPE_SUPPORT
+
+        # if amount is not specified, keep the same amount minus the tx fee
+        if amount is None:
+            dummy_outputs = [
+                (
+                    TYPE_ADDRESS | claim_type,
+                    claim_tuple,
+                    txout_value
+                )
+            ]
+            fee = self._calculate_fee(inputs, dummy_outputs, tx_fee)
+            if fee >= txout_value:
+                return {
+                    'success': False,
+                    'reason': 'Fee will exceed amount available in original bid. Increase amount'
+                }
+
+            outputs = [
+                (
+                    TYPE_ADDRESS | claim_type,
+                    claim_tuple,
+                    txout_value - fee
+                )
+            ]
+
+        elif amount <= 0:
+            return {'success': False, 'reason': 'Amount must be greater than zero'}
+
+        # amount is more than the original bid or equal, we need to get an input
+        elif amount >= txout_value:
+            additional_input_fee = 0
+            if tx_fee is None:
+                claim_input_size = Transaction.estimated_input_size(claim_utxo)
+                additional_input_fee = Transaction.fee_for_size(self.wallet.relayfee(),
+                                                                self.wallet.fee_per_kb(self.config),
+                                                                claim_input_size)
+
+            get_inputs_for_amount = amount - txout_value + additional_input_fee
+            # create a dummy tx for the extra amount in order to get the proper inputs to spend
+            dummy_outputs = [
+                (
+                    TYPE_ADDRESS | claim_type,
+                    claim_tuple,
+                    get_inputs_for_amount
+                )
+            ]
+            coins = self.wallet.get_spendable_coins()
+            try:
+                dummy_tx = self.wallet.make_unsigned_transaction(coins, dummy_outputs,
+                                                                 self.config, tx_fee, change_addr)
+            except NotEnoughFunds:
+                return {'success': False, 'reason': 'Not enough funds'}
+
+            # add the unspents to input
+            for i in dummy_tx._inputs:
+                inputs.append(i)
+
+            outputs = [
+                (
+                    TYPE_ADDRESS | claim_type,
+                    claim_tuple,
+                    amount
+                )
+            ]
+            # add the change utxos to output
+            for output in dummy_tx._outputs:
+                if not output[0] & claim_type:
+                    outputs.append(output)
+
+        # amount is less than the original bid,
+        # we need to put remainder minus fees in a change address
+        elif amount < txout_value:
+
+            dummy_outputs = [
+                (
+                    TYPE_ADDRESS | claim_type,
+                    claim_tuple,
+                    amount
+                ),
+                (
+                    TYPE_ADDRESS,
+                    change_addr,
+                    txout_value - amount
+                )
+            ]
+            fee = self._calculate_fee(inputs, dummy_outputs, tx_fee)
+            if fee > txout_value - amount:
+                return {
+                    'success': False,
+                    'reason': 'Fee will be greater than change amount, use amount=None to expend '
+                              'change as fee'
+                }
+
+            outputs = [
+                (
+                    TYPE_ADDRESS | claim_type,
+                    claim_tuple,
+                    amount
+                ),
+                (
+                    TYPE_ADDRESS,
+                    change_addr,
+                    txout_value - amount - fee
+                )
+            ]
+
+        return {'success':True, 'outputs':outputs, 'inputs':inputs}
+
     @command('wpn')
     def abandon(self, claim_id=None, txid=None, nout=None, broadcast=True, return_addr=None,
                 tx_fee=None):
@@ -2293,7 +2476,7 @@ class Commands(object):
 
         txid, nout = claim['txid'], claim['nout']
         if return_addr is None:
-            return_addr = self.wallet.create_new_address()
+            return_addr = self.wallet.get_least_used_address()
         if tx_fee is not None:
             tx_fee = int(COIN * tx_fee)
             if tx_fee < 0:
