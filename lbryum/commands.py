@@ -2027,13 +2027,14 @@ class Commands(object):
         return {'name': name, 'certificate_id': certificate_id, 'val': val}
 
     @command('wpn')
-    def renewclaimsbeforeexpiration(self, height, broadcast=True):
+    def renewclaimsbeforeexpiration(self, height, broadcast=True, skip_validate_schema=False):
         """
         Renew unexpired claims that will expire by the specified height.
         Unexpired claims will be updated to an identical claim, and supports
         will be spent into an identical support
 
         :param height: (int) update claims expiring before or at this block height
+        :param skip_validate_schema: (bool) skip validation of schema
         :param broadcast: (bool) broadcast transactions
         :returns dictionary, {<outpoint string>: formatted claim result}
         """
@@ -2043,35 +2044,36 @@ class Commands(object):
         results = {}
         for claim in pending_expiration:
             outpoint = "%s:%i" % (claim['txid'], claim['nout'])
-            results[outpoint] = self._renewclaim(claim, broadcast)
+            results[outpoint] = self._renewclaim(claim, broadcast, skip_validate_schema)
         return results
 
     @command('wpn')
-    def renewclaim(self, txid, nout, broadcast=True):
+    def renewclaim(self, txid, nout, broadcast=True, skip_validate_schema=False):
         """
         Renew claim. Unexpired claims will be udpated to an identical claim
         and supports will be spent into an identical support.
 
         :param txid: (str) txid of claim
         :param nout: (int) nout of claim
+        :param skip_validate_schema: (bool) skip validation of schema
         :param broadcast: (bool) True if broadcasting the claim
         :returns dictionary: formatted claim result
         """
         claims = self.wallet.get_name_claims(include_abandoned=False, include_supports=True,
                                              exclude_expired=True)
-
         claims = [claim for claim in claims if claim['txid'] == txid and claim['nout'] == nout]
         if not claims:
             raise Exception('no matching claim found for %s:%i', txid, nout)
         claim = claims[0]
-        return self._renewclaim(claim, broadcast)
+        return self._renewclaim(claim, broadcast, skip_validate_schema)
 
-    def _renewclaim(self, claim, broadcast=True):
+    def _renewclaim(self, claim, broadcast=True, skip_validate_schema=False):
         log.info("Updating lbry://%s#%s (%s)", claim['name'], claim['claim_id'],
                  claim['category'])
         if claim['category'] != 'support':
             out = self.update(claim['name'], claim['value'], claim_id=claim['claim_id'],
-                              txid=claim['txid'], nout=claim['nout'], broadcast=broadcast)
+                              txid=claim['txid'], nout=claim['nout'],
+                              skip_validate_schema=skip_validate_schema, broadcast=broadcast)
         else:
             out = self.updatesupport(claim['txid'], claim['nout'], broadcast=broadcast)
         return out
