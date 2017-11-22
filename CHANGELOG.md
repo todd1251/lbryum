@@ -29,6 +29,8 @@ labeled as 2.7.1. Subsequent releases will follow
 ### Added
   * Added `getleastusedchangeaddress` command
   * Added `getleastusedaddress` command
+  * Added `importcertificateinfo` and `exportcertificateinfo` commands
+  * Added `getcertificatesforsigning` command
 
 ### Removed
   *

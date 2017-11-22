@@ -513,7 +513,7 @@ class Commands(object):
 
     @command('wpn')
     def sendclaimtoaddress(self, claim_id, destination, amount, tx_fee=None, change_addr=None,
-                           broadcast=True):
+                           broadcast=True, skip_validate_schema=None):
         claims = self.getnameclaims(raw=True, include_supports=False, claim_id=claim_id,
                                     skip_validate_signatures=True)
         if len(claims) > 1:
@@ -527,10 +527,15 @@ class Commands(object):
         nout = claim['nout']
         claim_name = claim['name']
         claim_val = claim['value']
-        return self.update(claim_name, claim_val, amount=amount, certificate_id=None,
+        certificate_id = None
+        if not skip_validate_schema:
+            decoded = smart_decode(claim_val)
+            if self.cansignwithcertificate(decoded.certificate_id):
+                certificate_id = decoded.certificate_id
+        return self.update(claim_name, claim_val, amount=amount, certificate_id=certificate_id,
                            claim_id=claim_id, txid=txid, nout=nout, broadcast=broadcast,
                            claim_addr=destination, tx_fee=tx_fee, change_addr=change_addr,
-                           raw=False, skip_validate_schema=True)
+                           raw=False, skip_validate_schema=skip_validate_schema)
 
     @command('wp')
     def paytomany(self, outputs, tx_fee=None, from_addr=None, change_addr=None, nocheck=False,
@@ -1497,7 +1502,7 @@ class Commands(object):
     def getnameclaims(self, raw=False, include_abandoned=False, include_supports=True,
                       txid=None, nout=None, claim_id=None, skip_validate_signatures=False):
         """
-        Get  my name claims from wallet
+        Get my name claims from wallet
         """
 
         # get the name claims from the wallet
@@ -1603,7 +1608,7 @@ class Commands(object):
             name_claims.append(parsed)
         return name_claims
 
-    @command('wpn')
+    @command('wp')
     def getcertificateclaims(self, raw=False, include_abandoned=False):
         """
         Get my claims containing certificates
@@ -1616,7 +1621,8 @@ class Commands(object):
             try:
                 decoded = smart_decode(claim['value'])
                 if decoded.is_certificate:
-                    cert_result = self.parse_and_validate_claim_result(claim, raw=raw)
+                    cert_result = self.offline_parse_and_validate_claim_result(
+                        claim, None, raw=raw, decoded_claim=decoded, skip_validate_signatures=True)
                     if self.cansignwithcertificate(cert_result['claim_id']):
                         cert_result['can_sign'] = True
                     else:
@@ -1625,6 +1631,27 @@ class Commands(object):
             except DecodeError:
                 pass
         return certificate_claims
+
+    @command('wpn')
+    def getcertificatesforsigning(self, raw=False):
+        """
+        Get certificate claims that are usable for signing, the claims are not necessarily in the
+        wallet
+        """
+
+        my_certs = self.getcertificateclaims(raw=raw)
+        certificate_claim_ids = self.wallet.get_certificate_claim_ids_for_signing()
+        result = []
+        for cert_claim in my_certs:
+            cert_claim['is_mine'] = True
+            result.append(cert_claim)
+            certificate_claim_ids.remove(cert_claim['claim_id'])
+        if certificate_claim_ids:
+            imported_certs = self.getclaimsbyids(certificate_claim_ids, raw=raw)
+            for claim_id, cert_claim in imported_certs.iteritems():
+                cert_claim['is_mine'] = False
+                result.append(cert_claim)
+        return result
 
     def _calculate_fee(self, inputs, outputs, set_tx_fee):
         if set_tx_fee is not None:
@@ -1775,6 +1802,7 @@ class Commands(object):
 
         if not parse_lbry_uri(name).is_channel:
             return {'error': 'non compliant uri for certificate'}
+
         secp256k1_private_key = get_signer(SECP256k1).generate().private_key.to_pem()
         claim = ClaimDict.generate_certificate(secp256k1_private_key, curve=SECP256k1)
         encoded_claim = claim.serialized.encode('hex')
@@ -1786,6 +1814,56 @@ class Commands(object):
             self.wallet.set_default_certificate(result['claim_id'],
                                                 overwrite_existing=set_default_certificate)
         return result
+
+    @staticmethod
+    def _deserialize_certificate_key(serialized_certificate_info):
+        """
+        :param serialized_certificate_info:
+        :return: certificate claim id hex, pem encoded private key
+        """
+
+        cert_info = serialized_certificate_info[:40]
+        priv_key_info = serialized_certificate_info[40:]
+        return cert_info, priv_key_info.decode('hex')
+
+    @staticmethod
+    def _serialize_certificate_key(certificate_id, pem_private_key):
+        info_str = certificate_id + pem_private_key.encode('hex')
+        return info_str
+
+    @command('wp')
+    def exportcertificateinfo(self, certificate_id):
+        """
+        Export serialized channel signing information
+        """
+
+        if not self.cansignwithcertificate(certificate_id):
+            return {'error': 'certificate private is not in the wallet: %s' % certificate_id}
+        priv_key = self.wallet.get_certificate_signing_key(certificate_id)
+        if not priv_key:
+            return {'error': 'failed to key signing key for %s' % certificate_id}
+        return self._serialize_certificate_key(certificate_id, priv_key)
+
+    @command('wpn')
+    def importcertificateinfo(self, serialized_certificate_info):
+        """
+        Import serialized channel signing information (a claim id to a certificate claim
+        and corresponding private key)
+        """
+
+        certificate_id, signing_key = self._deserialize_certificate_key(serialized_certificate_info)
+
+        if self.cansignwithcertificate(certificate_id):
+            return {'error': 'refusing to overwrite certificate key already in the wallet',
+                    'success': False}
+        certificate_claim = self.getclaimbyid(certificate_id)
+        certificate_claim_obj = ClaimDict.load_dict(certificate_claim['value'])
+        if not certificate_claim_obj.is_certificate:
+            return {'error': 'claim is not a certificate', 'success': False}
+        if not certificate_claim_obj.validate_private_key(signing_key, certificate_id):
+            return {'error': 'private key does not match certificate', 'success': False}
+        self.wallet.save_certificate(certificate_id, signing_key)
+        return {'success': True}
 
     @command('wpn')
     def updateclaimsignature(self, name, amount=None, claim_id=None, certificate_id=None):
@@ -1856,7 +1934,7 @@ class Commands(object):
             result = self.update(name, decoded.serialized, amount=amount, raw=True)
         return result
 
-    @command('wpn')
+    @command('wp')
     def cansignwithcertificate(self, certificate_id):
         """
         Can sign with given claim certificate
@@ -1984,6 +2062,8 @@ class Commands(object):
 
         if change_addr is None:
             change_addr = self.wallet.get_least_used_address(for_change=True)
+        if not base_decode(change_addr, ADDRESS_LENGTH, 58):
+            return {'error': 'invalid change address'}
         if claim_id is None or txid is None or nout is None:
             claims = self.getnameclaims(skip_validate_signatures=True)
             for claim in claims:

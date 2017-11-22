@@ -243,7 +243,7 @@ class Abstract_Wallet(PrintError):
             if write:
                 self.storage.write()
 
-    def save_certificate(self, claim_id, private_key, write=False):
+    def save_certificate(self, claim_id, private_key, write=True):
         certificate_keys = self.storage.get('claim_certificates') or {}
         certificate_keys[claim_id] = private_key
         self.storage.put('claim_certificates', certificate_keys)
@@ -260,8 +260,11 @@ class Abstract_Wallet(PrintError):
 
     def get_certificate_signing_key(self, claim_id):
         certificates = self.storage.get('claim_certificates', {})
-
         return certificates.get(claim_id, None)
+
+    def get_certificate_claim_ids_for_signing(self):
+        certificates = self.storage.get('claim_certificates', {})
+        return certificates.keys()
 
     def clear_history(self):
         with self.transaction_lock:
