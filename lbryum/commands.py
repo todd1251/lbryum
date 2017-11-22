@@ -2063,7 +2063,7 @@ class Commands(object):
                                              exclude_expired=True)
         claims = [claim for claim in claims if claim['txid'] == txid and claim['nout'] == nout]
         if not claims:
-            raise Exception('no matching claim found for %s:%i', txid, nout)
+            return {'success': False, 'reason': 'no matching claim found for %s:%i' % (txid, nout)}
         claim = claims[0]
         return self._renewclaim(claim, broadcast, skip_validate_schema)
 
