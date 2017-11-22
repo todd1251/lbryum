@@ -849,7 +849,7 @@ class Commands(object):
         :param claim_result: a claim result from lbryum server
         :param certificate: a certificate result from lbryum server | None
         :param raw: bool
-        :param decoded_claim: ClaimDict
+        :param decoded_claim: ClaimDict obtained from claim value
         :param decoded_certificate: ClaimDict
         :param skip_validate_signatures: bool, claim signature validation is not necessary for many
         local operations and adds significant overhead to the call, ie 2200 claims can be parsed
@@ -1503,7 +1503,6 @@ class Commands(object):
         # get the name claims from the wallet
         result = self.wallet.get_name_claims(include_abandoned=include_abandoned,
                                              include_supports=include_supports)
-
         name_claims = []
 
         # set of claim ids of claims in the wallet
@@ -1557,6 +1556,7 @@ class Commands(object):
                     claims[claim['claim_id']] = claim
                 except DecodeError:
                     claim_tuples.append((claim['claim_id'], None))
+                    claims[claim['claim_id']] = claim
             else:
                 supports.append(claim)
 
@@ -1578,7 +1578,6 @@ class Commands(object):
         for _claim_id in claims:
             claim_value = claims[_claim_id]['value']
             claim_dict_objs[_claim_id] = claim_value
-
         # format (and validate, unless skip_validate_signatures) the resulting claims for return
         for _claim_id, certificate_id in claim_tuples:
             if certificate_id and certificate_id in claims:
@@ -1590,9 +1589,13 @@ class Commands(object):
 
             claim = claims[_claim_id]
             claim_obj = claim_dict_objs[_claim_id]
+            if isinstance(claim_obj, ClaimDict):
+                decoded_claim = claim_obj
+            else:
+                decoded_claim = None
 
             parsed = self.offline_parse_and_validate_claim_result(
-                claim, certificate=certificate, raw=raw, decoded_claim=claim_obj,
+                claim, certificate=certificate, raw=raw, decoded_claim=decoded_claim,
                 decoded_certificate=certificate_obj,
                 skip_validate_signatures=skip_validate_signatures)
             name_claims.append(parsed)
