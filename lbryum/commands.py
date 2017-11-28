@@ -41,7 +41,6 @@ log = logging.getLogger(__name__)
 
 ADDRESS_LENGTH = 25
 MAX_PAGE_SIZE = 500
-_KEY_RING = keyring.get_keyring()
 
 # Format amount to be decimal encoded string
 # Format value to be hex encoded string
@@ -110,14 +109,21 @@ class Commands(object):
         self.contacts = Contacts(self.config)
         self._password = None
         self.new_password = None
-        if self.wallet.use_encryption and not password:
+
+        try:
+            self._keyring = keyring.get_keyring() if config.get('use_keyring') else None
+        except:
+            # handle if no recommended keyring backend found
+            self._keyring = None
+
+        if self.wallet.use_encryption and not password and self._keyring is not None:
             # see if we can find the wallet password in the key ring, if not the user must
             # provide it
             master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
-            password = _KEY_RING.get_password("lbryum-%s" % master_pub_key, getpass.getuser())
+            password = self._keyring.get_password("lbryum-%s" % master_pub_key, getpass.getuser())
             if password:
                 self.unlock_wallet(password)
-                log.info("unlocked the wallet using password from %s" % _KEY_RING.name)
+                log.info("unlocked the wallet using password from %s" % self._keyring.name)
             else:
                 log.info("wallet password was not specified and is not in the keyring, "
                          "it must be provided to unlock the wallet")
@@ -165,9 +171,9 @@ class Commands(object):
         with self.wallet.storage.lock:
             self.new_password = new_password
             self.wallet.update_password(self._password, self.new_password)
-            if update_keyring:
+            if update_keyring and self._keyring is not None:
                 master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
-                _KEY_RING.set_password("lbryum-%s" % master_pub_key,
+                self._keyring.set_password("lbryum-%s" % master_pub_key,
                                        getpass.getuser(), new_password)
             self.wallet.storage.write()
             self._password = self.new_password
