@@ -112,7 +112,7 @@ class Commands(object):
 
         try:
             self._keyring = keyring.get_keyring() if config.get('use_keyring') else None
-        except:
+        except RuntimeError:
             # handle if no recommended keyring backend found
             self._keyring = None
 
@@ -129,6 +129,9 @@ class Commands(object):
                          "it must be provided to unlock the wallet")
         elif self.wallet.use_encryption and password:
             self.unlock_wallet(password)
+        else:
+            log.info("wallet password was not specified and there is no keyring available")
+
         if self.wallet.use_encryption and new_password:
             self.update_password(new_password)
 
@@ -171,7 +174,10 @@ class Commands(object):
         with self.wallet.storage.lock:
             self.new_password = new_password
             self.wallet.update_password(self._password, self.new_password)
-            if update_keyring and self._keyring is not None:
+            if update_keyring:
+                if self._keyring is None:
+                    raise ValueError("no keyring is available to update")
+
                 master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
                 self._keyring.set_password("lbryum-%s" % master_pub_key,
                                        getpass.getuser(), new_password)
