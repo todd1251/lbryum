@@ -31,6 +31,8 @@ labeled as 2.7.1. Subsequent releases will follow
   * Added `getleastusedaddress` command
   * Added `importcertificateinfo` and `exportcertificateinfo` commands
   * Added `getcertificatesforsigning` command
+  * Added `lock_wallet`, `decrypt_wallet`, and `update_passwords` functions and `locked` property to `Commands` class
+  * Added OS keyring support for storing the wallet encryption password
 
 ### Removed
   *

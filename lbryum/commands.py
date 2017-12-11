@@ -1,3 +1,5 @@
+import keyring
+import getpass
 import argparse
 import ast
 import base64
@@ -8,7 +10,6 @@ import logging
 import sys
 import time
 from decimal import Decimal
-from functools import wraps
 
 from ecdsa import BadSignatureError
 
@@ -22,7 +23,7 @@ from lbryum import __version__
 from lbryum.contacts import Contacts
 from lbryum.constants import COIN, TYPE_ADDRESS, TYPE_CLAIM, TYPE_SUPPORT, TYPE_UPDATE
 from lbryum.constants import RECOMMENDED_CLAIMTRIE_HASH_CONFIRMS, MAX_BATCH_QUERY_SIZE
-from lbryum.hashing import Hash, hash_160
+from lbryum.hashing import Hash, hash_160, hash_encode
 from lbryum.claims import verify_proof
 from lbryum.lbrycrd import hash_160_to_bc_address, is_address, decode_claim_id_hex
 from lbryum.lbrycrd import encode_claim_id_hex, encrypt_message, public_key_from_private_key
@@ -38,7 +39,6 @@ from lbryum.mnemonic import Mnemonic
 
 log = logging.getLogger(__name__)
 
-known_commands = {}
 ADDRESS_LENGTH = 25
 MAX_PAGE_SIZE = 500
 
@@ -60,66 +60,135 @@ def format_amount_value(obj):
     return obj
 
 
-class Command(object):
-    def __init__(self, func, s):
-        self.name = func.__name__
-        self.requires_network = 'n' in s
-        self.requires_wallet = 'w' in s
-        self.requires_password = 'p' in s
-        self.description = func.__doc__
-        self.help = self.description.split('.')[0] if self.description else None
-        varnames = func.func_code.co_varnames[1:func.func_code.co_argcount]
-        self.defaults = func.func_defaults
-        if self.defaults:
-            n = len(self.defaults)
-            self.params = list(varnames[:-n])
-            self.options = list(varnames[-n:])
-        else:
-            self.params = list(varnames)
-            self.options = []
-            self.defaults = []
-
-
 def command(s):
     def decorator(func):
-        global known_commands
-        name = func.__name__
-        known_commands[name] = Command(func, s)
-
-        @wraps(func)
-        def func_wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-
-        return func_wrapper
-
+        func.name = func.__name__
+        func.requires_network = 'n' in s
+        func.requires_wallet = 'w' in s
+        func.requires_password = 'p' in s
+        func.description = func.__doc__
+        func.help = func.__doc__.split(".")[0] if func.__doc__ else None
+        varnames = func.func_code.co_varnames[1:func.func_code.co_argcount]
+        func.defaults = func.func_defaults
+        if func.defaults:
+            n = len(func.defaults)
+            func.params = list(varnames[:-n])
+            func.options = list(varnames[-n:])
+        else:
+            func.params = list(varnames)
+            func.options = []
+            func.defaults = []
+        func.is_command = True
+        return func
     return decorator
 
 
+class CommandType(type):
+    """
+    Metaclass used to register @command decorated methods to the `known_commands` class attribute
+    """
+
+    def __new__(mcs, *args, **kwargs):
+        cls = super(CommandType, mcs).__new__(mcs, *args, **kwargs)
+        cls.known_commands = {}
+        for name in dir(cls):
+            cmd = getattr(cls, name)
+            if hasattr(cmd, "is_command"):
+                cls.known_commands[cmd.__name__] = cmd
+        return cls
+
+
 class Commands(object):
+    __metaclass__ = CommandType
+
     def __init__(self, config, wallet, network, callback=None, password=None, new_password=None):
         self.config = config
         self.wallet = wallet
         self.network = network
         self._callback = callback
-        self._password = password
-        self.new_password = new_password
         self.contacts = Contacts(self.config)
-
-    def _run(self, method, args, password_getter):
-        cmd = known_commands[method]
-        if cmd.requires_password and self.wallet.use_encryption:
-            self._password = apply(password_getter, ())
-        f = getattr(self, method)
-        result = f(*args)
         self._password = None
-        if self._callback:
-            apply(self._callback, ())
-        return result
+        self.new_password = None
+
+        try:
+            self._keyring = keyring.get_keyring() if config.get('use_keyring') else None
+        except RuntimeError:
+            # handle if no recommended keyring backend found
+            self._keyring = None
+
+        if self.wallet.use_encryption and not password and self._keyring is not None:
+            # see if we can find the wallet password in the key ring, if not the user must
+            # provide it
+            master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
+            password = self._keyring.get_password("lbryum-%s" % master_pub_key, getpass.getuser())
+            if password:
+                self.unlock_wallet(password)
+                log.info("unlocked the wallet using password from %s" % self._keyring.name)
+            else:
+                log.info("wallet password was not specified and is not in the keyring, "
+                         "it must be provided to unlock the wallet")
+        elif self.wallet.use_encryption and password:
+            self.unlock_wallet(password)
+        else:
+            log.info("wallet password was not specified and there is no keyring available")
+
+        if self.wallet.use_encryption and new_password:
+            self.update_password(new_password)
+
+    @property
+    def locked(self):
+        return self._password is None and self.wallet.use_encryption
+
+    def unlock_wallet(self, password):
+        if self._password:
+            return
+        if not self.wallet.use_encryption:
+            return
+        self.wallet.check_password(password)
+        self._password = password
+        self.new_password = None
+        return
+
+    def lock_wallet(self):
+        if self.locked:
+            return
+        self._password = None
+        self.new_password = None
+
+    def decrypt_wallet(self):
+        if not self.wallet.use_encryption:
+            return
+        with self.wallet.storage.lock:
+            self.wallet.check_password(self._password)
+            self.new_password = None
+            self.wallet.update_password(self._password, self.new_password)
+            self.wallet.storage.write()
+            self._password = None
+        return
+
+    def update_password(self, new_password, update_keyring=True):
+        if not new_password:
+            return
+        if self.wallet.use_encryption:
+            self.wallet.check_password(self._password)
+        with self.wallet.storage.lock:
+            self.new_password = new_password
+            self.wallet.update_password(self._password, self.new_password)
+            if update_keyring:
+                if self._keyring is None:
+                    raise ValueError("no keyring is available to update")
+
+                master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
+                self._keyring.set_password("lbryum-%s" % master_pub_key,
+                                       getpass.getuser(), new_password)
+            self.wallet.storage.write()
+            self._password = self.new_password
+        return
 
     @command('')
     def commands(self):
         """List of commands"""
-        return ' '.join(sorted(known_commands.keys()))
+        return ' '.join(sorted(self.known_commands.keys()))
 
     @command('')
     def create(self):
@@ -2691,8 +2760,8 @@ def get_parser():
     # parser_daemon.set_defaults(func=run_daemon)
     add_network_options(parser_daemon)
     # commands
-    for cmdname in sorted(known_commands.keys()):
-        cmd = known_commands[cmdname]
+    for cmdname in sorted(Commands.known_commands.keys()):
+        cmd = Commands.known_commands[cmdname]
         p = subparsers.add_parser(cmdname, parents=[parent_parser], help=cmd.help,
                                   description=cmd.description)
         # p.set_defaults(func=run_cmdline)
