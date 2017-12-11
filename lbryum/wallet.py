@@ -107,6 +107,10 @@ class WalletStorage(PrintError):
                 self.data.pop(key)
 
     def write(self):
+        with self.lock:
+            self._write()
+
+    def _write(self):
         if threading.currentThread().isDaemon():
             log.warning('daemon thread cannot write wallet')
             return
@@ -243,7 +247,7 @@ class Abstract_Wallet(PrintError):
             if write:
                 self.storage.write()
 
-    def save_certificate(self, claim_id, private_key, write=True):
+    def save_certificate(self, claim_id, private_key, write=False):
         certificate_keys = self.storage.get('claim_certificates') or {}
         certificate_keys[claim_id] = private_key
         self.storage.put('claim_certificates', certificate_keys)
@@ -1609,7 +1613,6 @@ class Deterministic_Wallet(Abstract_Wallet):
                 account = self.default_account()
             address = account.create_new_address(for_change)
             self.add_address(address)
-            self.storage.write()
         log.info("created address %s", address)
         return address
 
