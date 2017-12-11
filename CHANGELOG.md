@@ -12,7 +12,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Fixed
-  *
+  * Use lock when performing WalletStorage.write()
   *
 
 ### Deprecated
