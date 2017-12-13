@@ -596,6 +596,8 @@ class Commands(object):
         nout = claim['nout']
         claim_name = claim['name']
         claim_val = claim['value']
+        if isinstance(claim_val, ClaimDict):
+            claim_val = claim_val.serialized.encode('hex')
         certificate_id = None
         if not skip_validate_schema:
             decoded = smart_decode(claim_val)
