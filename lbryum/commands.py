@@ -116,7 +116,7 @@ class Commands(object):
             # handle if no recommended keyring backend found
             self._keyring = None
 
-        if self.wallet.use_encryption and not password and self._keyring is not None:
+        if self.wallet and self.wallet.use_encryption and not password and self._keyring is not None:
             # see if we can find the wallet password in the key ring, if not the user must
             # provide it
             master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
@@ -127,12 +127,12 @@ class Commands(object):
             else:
                 log.info("wallet password was not specified and is not in the keyring, "
                          "it must be provided to unlock the wallet")
-        elif self.wallet.use_encryption and password:
+        elif self.wallet and self.wallet.use_encryption and password:
             self.unlock_wallet(password)
-        else:
+        elif self.wallet:
             log.info("wallet password was not specified and there is no keyring available")
 
-        if self.wallet.use_encryption and new_password:
+        if self.wallet and self.wallet.use_encryption and new_password:
             self.update_password(new_password)
 
     @property
