@@ -1768,42 +1768,15 @@ class Commands(object):
         if skip_validate_schema and certificate_id:
             return {'success': False, 'reason': 'refusing to sign claim without validated schema'}
 
-        parsed_claim = self.verify_request_to_make_claim(name, val, certificate_id)
-        if 'error' in parsed_claim:
-            return {'success': False, 'reason': parsed_claim['error']}
-
-        parsed_uri = parse_lbry_uri(name)
-        name = parsed_claim['name']
-        val = parsed_claim['val']
-        certificate_id = parsed_claim['certificate_id']
-
-        if not skip_update_check:
-            my_claims = [claim
-                         for claim in self.getnameclaims(include_supports=False,
-                                                         skip_validate_signatures=True)
-                         if claim['name'] == name]
-            if len(my_claims) > 1:
-                return {'success': False, 'reason': "Dont know which claim to update"}
-            if my_claims:
-                my_claim = my_claims[0]
-
-                if parsed_uri.claim_id and not my_claim['claim_id'].startswith(parsed_uri.claim_id):
-                    return {'success': False,
-                            'reason': 'claim id in URI does not match claim to update'}
-                log.info("There is an unspent claim in your wallet for this name, updating "
-                         "it instead")
-                return self.update(name, val, amount=amount, broadcast=broadcast,
-                                   claim_addr=claim_addr,
-                                   tx_fee=tx_fee, change_addr=change_addr,
-                                   certificate_id=certificate_id, raw=raw,
-                                   skip_validate_schema=skip_validate_schema)
+        # decode claim value as hex
         if not raw:
             val = val.decode('hex')
+
+        # validate claim and change address if either where given, get least used if not provided
         if claim_addr is None:
             claim_addr = self.wallet.get_least_used_address()
         if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
             return {'error': 'invalid claim address'}
-
         if change_addr is None:
             change_addr = self.wallet.get_least_used_address(for_change=True)
         if not base_decode(change_addr, ADDRESS_LENGTH, 58):
@@ -1817,32 +1790,45 @@ class Commands(object):
             if tx_fee < 0:
                 return {'success': False, 'reason': 'tx_fee must be greater than or equal to 0'}
 
-        claim_value = None
+        if certificate_id:
+            if not self.cansignwithcertificate(certificate_id):
+                return {'success': False,
+                        'reason': 'Cannot sign for certificate %s' % certificate_id}
 
         if not skip_validate_schema:
-            try:
-                claim_value = smart_decode(val)
-            except DecodeError as err:
+            parsed_claim = self.verify_request_to_make_claim(name, val)
+            if 'error' in parsed_claim:
+                return {'success': False, 'reason': parsed_claim['error']}
+
+            name = parsed_claim['name']
+            decoded_claim = parsed_claim['decoded']
+            if certificate_id:
+                signing_key = self.wallet.get_certificate_signing_key(certificate_id)
+                signed = decoded_claim.sign(signing_key, claim_addr, certificate_id,
+                                            curve=SECP256k1)
+                val = signed.serialized
+            else:
+                val = decoded_claim.serialized
+
+        if not skip_update_check:
+            my_claims = [claim
+                         for claim in self.getnameclaims(include_supports=False,
+                                                         skip_validate_signatures=True)
+                         if claim['name'] == name]
+            if len(my_claims) > 1:
                 return {'success': False,
-                        'reason': 'Decode error: %s' % err}
+                        'reason': "Multiple claims (%i) already exist for %s, "
+                                  "dont know which claim to update" % (len(my_claims), name)}
+            elif my_claims:
+                log.info("There is an unspent claim in your wallet for this name, updating "
+                         "it instead")
+                return self.update(name, val, amount=amount, broadcast=broadcast,
+                                   claim_addr=claim_addr,
+                                   tx_fee=tx_fee, change_addr=change_addr,
+                                   certificate_id=certificate_id, raw=raw,
+                                   skip_validate_schema=skip_validate_schema)
 
-            if not parsed_uri.is_channel and claim_value.is_certificate:
-                return {'success': False,
-                        'reason': 'Certificates must have URIs beginning with /"@/"'}
-
-            if claim_value.has_signature:
-                return {'success': False, 'reason': 'Claim value is already signed'}
-
-            if certificate_id is not None:
-                if not self.cansignwithcertificate(certificate_id):
-                    return {'success': False,
-                            'reason': 'Cannot sign for certificate %s' % certificate_id}
-
-        if certificate_id and claim_value:
-            signing_key = self.wallet.get_certificate_signing_key(certificate_id)
-            signed = claim_value.sign(signing_key, claim_addr, certificate_id, curve=SECP256k1)
-            val = signed.serialized
-
+        # prepare the tx
         outputs = [(TYPE_ADDRESS | TYPE_CLAIM, ((name, val), claim_addr), amount)]
         coins = self.wallet.get_spendable_coins()
         try:
@@ -1851,21 +1837,29 @@ class Commands(object):
         except NotEnoughFunds:
             return {'success': False,
                     'reason': 'Not enough funds'}
+
+        # sign and optionally broadcast
         self.wallet.sign_transaction(tx, self._password)
         if broadcast:
             success, out = self.wallet.send_tx(tx)
             if not success:
                 return {'success': False, 'reason': out}
 
+        # get claim_id and nout for the claim tx, format and return results
         nout = None
         for i, output in enumerate(tx._outputs):
             if output[0] & TYPE_CLAIM:
                 nout = i
         assert nout is not None
-
         claimid = encode_claim_id_hex(claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout))
-        return {"success": True, "txid": tx.hash(), "nout": nout, "tx": str(tx),
-                "fee": str(Decimal(tx.get_fee()) / COIN), "claim_id": claimid}
+        return {
+            "success": True,
+            "txid": tx.hash(),
+            "nout": nout,
+            "tx": str(tx),
+            "fee": str(Decimal(tx.get_fee()) / COIN),
+            "claim_id": claimid
+        }
 
     @command('wpn')
     def claimcertificate(self, name, amount, broadcast=True, claim_addr=None, tx_fee=None,
@@ -2081,31 +2075,34 @@ class Commands(object):
         name = claim['name']
         return self.support(name, claim_id, amount, broadcast, claim_addr, tx_fee, change_addr)
 
-    def verify_request_to_make_claim(self, uri, val, certificate_id):
+    def verify_request_to_make_claim(self, uri, val):
         try:
             parsed_uri = parse_lbry_uri(uri)
         except URIParseError as err:
-            return {'error': 'Failed to decode URI: %s' % err}
+            return {'success': False, 'error': 'Failed to decode URI: %s' % err}
+        try:
+            decoded = smart_decode(val)
+        except DecodeError as err:
+            return {'success': False, 'error': 'Failed to decode certificate in claim: %s' % err}
 
         if parsed_uri.is_channel:
             if parsed_uri.path:
-                try:
-                    if smart_decode(val).is_certificate:
-                        return {'error': 'Claim in a channel should not contain a certificate'}
-                except DecodeError as err:
-                    return {'error': 'Failed to decode claim: %s' % err}
+                if decoded.is_certificate:
+                    return {'success': False,
+                            'error': 'Claim in a channel should not contain a certificate'}
                 name = parsed_uri.path
             else:
-                try:
-                    if not smart_decode(val).is_certificate:
-                        return {'error': 'Channel claim does not contain a certificate'}
-                except DecodeError as err:
-                    return {'error': 'Failed to decode certificate in claim: %s' % err}
+                if not decoded.is_certificate:
+                    return {'success': False,
+                            'error': 'Channel claim does not contain a certificate'}
                 name = parsed_uri.name
         else:
+            if decoded.is_certificate:
+                return {'success': False,
+                        'error': 'Certificates must have URIs beginning with /"@/"'}
             name = parsed_uri.name
 
-        return {'name': name, 'certificate_id': certificate_id, 'val': val}
+        return {'success': True, 'name': name, 'decoded': decoded}
 
     @command('wpn')
     def renewclaimsbeforeexpiration(self, height, broadcast=True, skip_validate_schema=False):
@@ -2254,33 +2251,7 @@ class Commands(object):
         if skip_validate_schema and certificate_id:
             return {'success': False, 'reason': 'refusing to sign claim without validated schema'}
 
-        parsed_claim = self.verify_request_to_make_claim(name, val, certificate_id)
-        if 'error' in parsed_claim:
-            return {'success': False, 'reason': parsed_claim['error']}
-
-        parsed_uri = parse_lbry_uri(name)
-        name = parsed_claim['name']
-        val = parsed_claim['val']
-        certificate_id = parsed_claim['certificate_id']
-
-        if not raw:
-            val = val.decode('hex')
-        if not skip_validate_schema:
-            try:
-                decoded_claim = smart_decode(val)
-            except DecodeError as err:
-                return {'success': False, 'reason': 'Decode error: %s' % err}
-        else:
-            decoded_claim = None
-        if claim_addr is None:
-            claim_addr = self.wallet.get_least_used_address()
-        if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
-            return {'error': 'invalid claim address'}
-
-        if change_addr is None:
-            change_addr = self.wallet.get_least_used_address(for_change=True)
-        if not base_decode(change_addr, ADDRESS_LENGTH, 58):
-            return {'error': 'invalid change address'}
+        # verify there is a claim to update
         if claim_id is None or txid is None or nout is None:
             claims = self.getnameclaims(skip_validate_signatures=True)
             for claim in claims:
@@ -2292,65 +2263,67 @@ class Commands(object):
             if not claim_id:
                 return {'success': False, 'reason': 'No claim to update'}
 
+        # validate the claim and change addresses if given
+        # if they were not provided default to the least used addresses
+        if not claim_addr:
+            claim_addr = self.wallet.get_least_used_address()
+        if not base_decode(claim_addr, ADDRESS_LENGTH, 58):
+            return {'error': 'invalid claim address'}
+        if not change_addr:
+            change_addr = self.wallet.get_least_used_address(for_change=True)
+        if not base_decode(change_addr, ADDRESS_LENGTH, 58):
+            return {'error': 'invalid change address'}
+
+        # default to hex encoding for the claim value,
+        # otherwise we can't copy/paste serialized protobuf claims via command line
+        if not raw:
+            val = val.decode('hex')
+
+        # validate that the name and claim metadata are compliant with lbryschema,
+        # sign the claim if necessary, and set `val` and `name` to their final values
+        # val will be a serialized string of bytes
+        # name will have the lbry:// prefix stripped as well as the @channel and path prefix for
+        # signed content claims where the full path uri was provided
         if not skip_validate_schema:
-            try:
-                claim_value = smart_decode(val)
-            except DecodeError as err:
-                return {'success': False,
-                        'reason': 'Decode error: %s' % err}
-
-            if not parsed_uri.is_channel and claim_value.is_certificate:
-                return {'success': False,
-                        'reason': 'Certificates must have URIs beginning with /"@/"'}
-
-            if claim_value.has_signature:
-                return {'success': False, 'reason': 'Claim value is already signed'}
-
-            if certificate_id is not None:
+            parsed_claim = self.verify_request_to_make_claim(name, val)
+            if 'error' in parsed_claim:
+                return {'success': False, 'reason': parsed_claim['error']}
+            name = parsed_claim['name']
+            decoded_claim = parsed_claim['decoded']
+            if not certificate_id:
+                # set the cert id from the claim if it wasn't provided as an argument
+                if decoded_claim.has_signature:
+                    certificate_id = decoded_claim.certificate_id
+            else:
+                if decoded_claim.has_signature:
+                    if not self.cansignwithcertificate(decoded_claim.certificate_id):
+                        return {'success': False,
+                                'reason': 'Refusing to sign over existing signature where the '
+                                          'original certificate key is not in the wallet %s'
+                                          % certificate_id}
+            if certificate_id:
+                # sign and serialize the claim metadata
                 if not self.cansignwithcertificate(certificate_id):
                     return {'success': False,
                             'reason': 'Cannot sign for certificate %s' % certificate_id}
-
-            if certificate_id and claim_value:
                 signing_key = self.wallet.get_certificate_signing_key(certificate_id)
-                signed = claim_value.sign(signing_key, claim_addr, certificate_id, curve=SECP256k1)
-                val = signed.serialized
-
-            if certificate_id and decoded_claim:
-                signing_key = self.wallet.get_certificate_signing_key(certificate_id)
-                if signing_key:
-                    signed = decoded_claim.sign(signing_key,
-                                                claim_addr,
-                                                certificate_id,
-                                                curve=SECP256k1)
-                    val = signed.serialized
-                else:
-                    return {'success': False,
-                            'reason': "Cannot sign with certificate %s" % certificate_id}
-
-            elif not certificate_id and decoded_claim:
-                if decoded_claim.has_signature:
-                    certificate_id = decoded_claim.certificate_id
-                    signing_key = self.wallet.get_certificate_signing_key(certificate_id)
-                    if signing_key:
-                        claim = ClaimDict.deserialize(val)
-                        signed = claim.sign(signing_key,
-                                            claim_addr,
-                                            certificate_id,
+                signed = decoded_claim.sign(signing_key, claim_addr, certificate_id,
                                             curve=SECP256k1)
-                        val = signed.serialized
-                    else:
-                        return {'success': False,
-                                'reason': "Cannot sign with certificate %s" % certificate_id}
+                val = signed.serialized
+            else:
+                # the claim isn't to be signed, serialize it
+                val = decoded_claim.serialized
 
-        out = self._get_input_output_for_updates(name, val, amount, claim_id, txid, nout,
+        # get the tx inputs and outputs
+        txio = self._get_input_output_for_updates(name, val, amount, claim_id, txid, nout,
                                                  claim_addr, change_addr, tx_fee)
-        if not out['success']:
-            return out
+        if not txio['success']:
+            return txio
         else:
-            inputs = out['inputs']
-            outputs = out['outputs']
+            inputs = txio['inputs']
+            outputs = txio['outputs']
 
+        # sign and broadcast the update
         tx = Transaction.from_io(inputs, outputs)
         self.wallet.sign_transaction(tx, self._password)
         if broadcast:
@@ -2358,12 +2331,14 @@ class Commands(object):
             if not success:
                 return {"success": False, "reason": out}
 
+        # determine the nout for the claim output
         nout = None
         amount = 0
         for i, output in enumerate(tx._outputs):
             if output[0] & TYPE_UPDATE:
                 nout = i
                 amount = output[2]
+                break
 
         return {
             "success": True,
