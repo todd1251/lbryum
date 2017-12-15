@@ -1918,19 +1918,10 @@ class Commands(object):
             return {'error': 'failed to key signing key for %s' % certificate_id}
         return self._serialize_certificate_key(certificate_id, priv_key)
 
-    @command('wpn')
-    def importcertificateinfo(self, serialized_certificate_info):
-        """
-        Import serialized channel signing information (a claim id to a certificate claim
-        and corresponding private key)
-        """
-
-        certificate_id, signing_key = self._deserialize_certificate_key(serialized_certificate_info)
-
+    def _import_certificate_info(self, certificate_id, signing_key, certificate_claim):
         if self.cansignwithcertificate(certificate_id):
             return {'error': 'refusing to overwrite certificate key already in the wallet',
                     'success': False}
-        certificate_claim = self.getclaimbyid(certificate_id)
         certificate_claim_obj = ClaimDict.load_dict(certificate_claim['value'])
         if not certificate_claim_obj.is_certificate:
             return {'error': 'claim is not a certificate', 'success': False}
@@ -1938,6 +1929,22 @@ class Commands(object):
             return {'error': 'private key does not match certificate', 'success': False}
         self.wallet.save_certificate(certificate_id, signing_key)
         return {'success': True}
+
+    @command('wpn')
+    def importcertificateinfo(self, *serialized_certificate_info):
+        """
+        Import serialized channel infos
+        """
+
+        infos = {}
+        response = {}
+        for info in serialized_certificate_info:
+            certificate_id, signing_key = self._deserialize_certificate_key(info)
+            infos[certificate_id] = signing_key
+        certificate_claims = self.getclaimsbyids(infos.keys())
+        for cert_id, cert_claim in certificate_claims.iteritems():
+            response[cert_id] = self._import_certificate_info(cert_id, infos[cert_id], cert_claim)
+        return response
 
     @command('wpn')
     def updateclaimsignature(self, name, amount=None, claim_id=None, certificate_id=None):
