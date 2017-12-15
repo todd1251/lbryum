@@ -116,7 +116,7 @@ class Commands(object):
             # handle if no recommended keyring backend found
             self._keyring = None
 
-        if self.wallet and self.wallet.use_encryption and not password and self._keyring is not None:
+        if self.wallet and self.wallet.use_encryption and not password and self._keyring:
             # see if we can find the wallet password in the key ring, if not the user must
             # provide it
             master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
