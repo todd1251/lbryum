@@ -1,8 +1,8 @@
 import sys
-import ecdsa
-from ecdsa.curves import SECP256k1
 import hashlib
 import logging
+import ecdsa
+from ecdsa.curves import SECP256k1
 
 from lbryum.constants import TYPE_SCRIPT, TYPE_PUBKEY, TYPE_UPDATE, TYPE_SUPPORT, TYPE_CLAIM
 from lbryum.constants import TYPE_ADDRESS, NO_SIGNATURE
@@ -21,7 +21,7 @@ def parse_xpub(x_pubkey):
     if x_pubkey[0:2] in ['02', '03', '04']:
         pubkey = x_pubkey
     elif x_pubkey[0:2] == 'ff':
-        from account import BIP32_Account
+        from lbryum.bip32 import BIP32_Account
         xpub, s = BIP32_Account.parse_xpubkey(x_pubkey)
         pubkey = BIP32_Account.derive_pubkey_from_xpub(xpub, s[0], s[1])
     elif x_pubkey[0:2] == 'fd':

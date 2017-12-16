@@ -1,4 +1,3 @@
-import keyring
 import getpass
 import argparse
 import ast
@@ -10,6 +9,7 @@ import logging
 import sys
 import time
 from decimal import Decimal
+import keyring
 
 from ecdsa import BadSignatureError
 
