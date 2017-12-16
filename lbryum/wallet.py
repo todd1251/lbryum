@@ -9,18 +9,20 @@ import time
 import hashlib
 import logging
 import re
-import pbkdf2
 import hmac
 from decimal import Decimal
 from functools import partial
 from unicodedata import normalize
+import pbkdf2
 
 from lbryum import __version__ as LBRYUM_VERSION
-from lbryum.account import ImportedAccount, Multisig_Account, BIP32_Account
+from lbryum.bip32 import BIP32_Account
+from lbryum.multisig import Multisig_Account
+from lbryum.account import ImportedAccount
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_SUPPORT, TYPE_UPDATE, TYPE_PUBKEY
 from lbryum.constants import EXPIRATION_BLOCKS, COINBASE_MATURITY, RECOMMENDED_FEE
 from lbryum.coinchooser import COIN_CHOOSERS
-from lbryum.mnemonic import Mnemonic
+from lbryum.mnemonic import Mnemonic, is_new_seed
 from lbryum.synchronizer import Synchronizer
 from lbryum.transaction import Transaction
 from lbryum.util import PrintError, profiler, rev_hex
@@ -28,7 +30,7 @@ from lbryum.errors import NotEnoughFunds, InvalidPassword
 from lbryum.verifier import SPV
 from lbryum.version import NEW_SEED_VERSION
 from lbryum.lbrycrd import regenerate_key, is_address, is_compressed, pw_encode, pw_decode
-from lbryum.lbrycrd import is_new_seed, hash_160_to_bc_address, xpub_from_xprv, bip32_private_key
+from lbryum.lbrycrd import hash_160_to_bc_address, xpub_from_xprv, bip32_private_key
 from lbryum.lbrycrd import encode_claim_id_hex, deserialize_xkey, claim_id_hash, is_private_key
 from lbryum.lbrycrd import public_key_from_private_key, public_key_to_bc_address
 from lbryum.lbrycrd import bip32_public_derivation, bip32_private_derivation, bip32_root

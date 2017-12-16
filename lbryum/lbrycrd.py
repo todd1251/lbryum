@@ -12,10 +12,10 @@ from ecdsa.ecdsa import curve_secp256k1, generator_secp256k1
 from ecdsa.ellipticcurve import Point
 from ecdsa.util import number_to_string, string_to_number
 
-from lbryum import msqr, version
+from lbryum import msqr
 from lbryum.base import base_decode, base_encode, EncodeBase58Check, DecodeBase58Check, __b58chars
 from lbryum.util import print_error, rev_hex, var_int, int_to_hex
-from lbryum.hashing import Hash, sha256, hash_160, hmac_sha_512
+from lbryum.hashing import Hash, sha256, hash_160
 from lbryum.errors import InvalidPassword
 
 log = logging.getLogger(__name__)
@@ -117,13 +117,6 @@ def op_push(i):
         return '4d' + int_to_hex(i, 2)
     else:
         return '4e' + int_to_hex(i, 4)
-
-
-def is_new_seed(x, prefix=version.SEED_PREFIX):
-    import mnemonic
-    x = mnemonic.prepare_seed(x)
-    s = hmac_sha_512("Seed version", x.encode('utf8')).encode('hex')
-    return s.startswith(prefix)
 
 
 # pywallet openssl private key implementation

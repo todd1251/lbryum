@@ -1,6 +1,6 @@
 import unittest
 import copy
-from lbryum import account
+from lbryum import bip32
 from lbryum import wallet
 
 
@@ -42,7 +42,7 @@ class Test_Account(unittest.TestCase):
 
     def test_bip32_account(self):
 
-        a = account.BIP32_Account(self.v)
+        a = bip32.BIP32_Account(self.v)
         self.assertEquals(a.dump(), self.v)
         self.assertEquals(a.get_master_pubkeys(), [self.v['xpub']])
         self.assertEquals(a.first_address(),
@@ -75,7 +75,7 @@ class Test_Account(unittest.TestCase):
     def test_bip32_account_correction(self):
         # if there is no problem, correct_pubkeys
         # should return False
-        a = account.BIP32_Account(self.v)
+        a = bip32.BIP32_Account(self.v)
         out = a.correct_pubkeys()
         self.assertFalse(out)
 
@@ -83,7 +83,7 @@ class Test_Account(unittest.TestCase):
         mod_v = copy.deepcopy(self.v)
         mod_v['change'].append(mod_v['change'][-1])
 
-        a = account.BIP32_Account(mod_v)
+        a = bip32.BIP32_Account(mod_v)
         self.assertNotEqual(self.v['change'], a.change_pubkeys)
         out = a.correct_pubkeys()
         self.assertTrue(out)
@@ -95,7 +95,7 @@ class Test_Account(unittest.TestCase):
         # receiving[2] should be re generated
         mod_v = copy.deepcopy(self.v)
         mod_v['receiving'][2] = mod_v['receiving'][1]
-        a = account.BIP32_Account(mod_v)
+        a = bip32.BIP32_Account(mod_v)
 
         self.assertNotEqual(self.v['receiving'], a.receiving_pubkeys)
         out = a.correct_pubkeys()
