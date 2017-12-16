@@ -631,14 +631,16 @@ class Commands(object):
         # which helps in creating a running tally for getting the
         # update transactions correct value and sign
         claim_amt = dict()
-        def get_info_dict(name, claim_id, nout, txo, value, tx_type):
-            amount = float(Decimal(txo[2]) / Decimal(COIN))
+        def get_info_dict(name, claim_id, nout, txo, tx_type, value=None):
+            # balance_delta is init to amount because, if tx_type is support and value >=0
+            # then balance_delta would remain undefined
+            balance_delta = amount = float(Decimal(txo[2]) / Decimal(COIN))
 
             if tx_type == "claim":
-                amount = -1 * amount
-                claim_amt[claim_id] = amount
+                balance_delta = -1 * amount
+                claim_amt[claim_id] = balance_delta
             elif tx_type == "support" and value < 0:
-                amount = -1 * amount
+                balance_delta = -1 * amount
             elif tx_type == "update":
                 abs_amount = abs(amount)
 
@@ -646,18 +648,21 @@ class Commands(object):
                     # the previous update or claim is known already
                     abs_prev_amount = abs(claim_amt[claim_id])
                     claim_amt[claim_id] = amount
-                    amount = abs_prev_amount - abs_amount
+                    balance_delta = abs_prev_amount - abs_amount
                 else:
                     # this is a claim that was sent to us via an update transaction
-                    amount = abs_amount
+                    balance_delta = abs_amount
                     claim_amt[claim_id] = abs_amount
+            elif tx_type == "abandon":
+                balance_delta = abs(claim_amt[claim_id])
+
 
             return {
                 'claim_name': name,
                 'claim_id': claim_id,
                 'nout': nout,
-                'balance_delta': amount,
-                'amount': float(Decimal(txo[2]) / Decimal(COIN)),
+                'balance_delta': balance_delta,
+                'amount': amount,
                 'address': txo[1][1]
             }
 
@@ -675,49 +680,51 @@ class Commands(object):
             claim_infos = []
             abandon_info = []
 
-            for nout, tx_out in enumerate(tx_outs):
-                if tx_out[0] & TYPE_SUPPORT:
-                    claim_name, claim_id = tx_out[1][0]
-                    claim_id = encode_claim_id_hex(claim_id)
-                    support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                        history_result['value'], tx_type="support"))
-                elif tx_out[0] & TYPE_UPDATE:
-                    claim_name, claim_id, claim_value = tx_out[1][0]
-                    claim_id = encode_claim_id_hex(claim_id)
-                    update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                        history_result['value'], tx_type="update"))
-                elif tx_out[0] & TYPE_CLAIM:
-                    claim_name, claim_value = tx_out[1][0]
-                    claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
-                    claim_id = encode_claim_id_hex(claim_id)
-                    claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                        history_result['value'], tx_type="claim"))
-                elif (tx_out[0] & TYPE_ADDRESS) and len(tx_outs) == 1:
-                    _tx = self.wallet.transactions.get(txid)
-                    tx_in = _tx.inputs()
-                    prevout_hash = tx_in[0]['prevout_hash']
+            if len(tx_outs) == 1 and (tx_outs[0][0] & TYPE_ADDRESS):
+                tx_in = tx.inputs()
+                prevout_hash = tx_in[0]['prevout_hash']
 
-                    if not prevout_hash in txids:
-                        continue
+                if not prevout_hash in txids:
+                    continue
 
-                    prev_txn_ops = self.wallet.transactions[prevout_hash].outputs()
+                prev_tx = self.wallet.transactions[prevout_hash]
+                prev_txn_ops = prev_tx.outputs()
 
-                    for nout, prev_txn_op in enumerate(prev_txn_ops):
-                        if prev_txn_op[0] & TYPE_CLAIM:
-                            claim_name, claim_value = prev_txn_op[1][0]
-                            claim_id = claim_id_hash(rev_hex(_tx.hash()).decode('hex'), nout)
-                            claim_id = encode_claim_id_hex(claim_id)
-                            abandon_info = {
-                                'claim_name': claim_name,
-                                'claim_id': claim_id
-                            }
-                        elif prev_txn_op[0] & TYPE_UPDATE:
-                            claim_name, claim_id, claim_value = prev_txn_op[1][0]
-                            claim_id = encode_claim_id_hex(claim_id)
-                            abandon_info = {
-                                'claim_name': claim_name,
-                                'claim_id': claim_id
-                            }
+                for nout, prev_txn_op in enumerate(prev_txn_ops):
+                    if prev_txn_op[0] & TYPE_CLAIM:
+                        claim_name, claim_value = prev_txn_op[1][0]
+                        claim_id = claim_id_hash(rev_hex(prev_tx.hash()).decode('hex'), nout)
+                        claim_id = encode_claim_id_hex(claim_id)
+                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_op,
+                            tx_type="abandon"))
+                    elif prev_txn_op[0] & TYPE_UPDATE:
+                        claim_name, claim_id, claim_value = prev_txn_op[1][0]
+                        claim_id = encode_claim_id_hex(claim_id)
+                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_op,
+                            tx_type="abandon"))
+                    elif prev_txn_op[0] & TYPE_SUPPORT:
+                        claim_name, claim_id = prev_txn_op[1][0]
+                        claim_id = encode_claim_id_hex(claim_id)
+                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_op,
+                            tx_type="support_abandon"))
+            else:
+                for nout, tx_out in enumerate(tx_outs):
+                    if tx_out[0] & TYPE_SUPPORT:
+                        claim_name, claim_id = tx_out[1][0]
+                        claim_id = encode_claim_id_hex(claim_id)
+                        support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                            tx_type="support", value = history_result['value']))
+                    elif tx_out[0] & TYPE_UPDATE:
+                        claim_name, claim_id, claim_value = tx_out[1][0]
+                        claim_id = encode_claim_id_hex(claim_id)
+                        update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                            tx_type="update"))
+                    elif tx_out[0] & TYPE_CLAIM:
+                        claim_name, claim_value = tx_out[1][0]
+                        claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
+                        claim_id = encode_claim_id_hex(claim_id)
+                        claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                            tx_type="claim"))
 
             result = history_result
             result['support_info'] = support_infos
@@ -742,14 +749,13 @@ class Commands(object):
         for h in claim_history:
             support_info = []
             for supported in h['support_info']:
-                claim_ids_to_check.append(supported['claim_id'])
                 claim = claims.get(supported['claim_id'])
                 if claim:
                     if supported['address'] == claim['address']:
                         supported['is_tip'] = True
                     else:
                         supported['is_tip'] = False
-                    support_info.append(supported)
+                support_info.append(supported)
             h['support_info'] = support_info
             results.append(h)
 
