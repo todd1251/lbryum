@@ -13,7 +13,7 @@ labeled as 2.7.1. Subsequent releases will follow
 
 ### Fixed
   * Use lock when performing WalletStorage.write()
-  *
+  * Fixed `sendclaimtoaddress` for signed content claims
 
 ### Deprecated
   *
