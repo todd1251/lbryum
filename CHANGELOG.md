@@ -14,6 +14,7 @@ labeled as 2.7.1. Subsequent releases will follow
 ### Fixed
   * Use lock when performing WalletStorage.write()
   * Fixed `sendclaimtoaddress` for signed content claims
+  * Fixed `https://github.com/lbryio/lbryum/issues/188`
 
 ### Deprecated
   *
