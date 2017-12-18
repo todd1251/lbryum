@@ -1768,6 +1768,24 @@ class Commands(object):
         if skip_validate_schema and certificate_id:
             return {'success': False, 'reason': 'refusing to sign claim without validated schema'}
 
+        if not skip_update_check:
+            my_claims = [claim
+                         for claim in self.getnameclaims(include_supports=False,
+                                                         skip_validate_signatures=True)
+                         if claim['name'] == name]
+            if len(my_claims) > 1:
+                return {'success': False,
+                        'reason': "Multiple claims (%i) already exist for %s, "
+                                  "dont know which claim to update" % (len(my_claims), name)}
+            elif my_claims:
+                log.info("There is an unspent claim in your wallet for this name, updating "
+                         "it instead")
+                return self.update(name, val, amount=amount, broadcast=broadcast,
+                                   claim_addr=claim_addr,
+                                   tx_fee=tx_fee, change_addr=change_addr,
+                                   certificate_id=certificate_id, raw=raw,
+                                   skip_validate_schema=skip_validate_schema)
+
         # decode claim value as hex
         if not raw:
             val = val.decode('hex')
@@ -1809,24 +1827,6 @@ class Commands(object):
                 val = signed.serialized
             else:
                 val = decoded_claim.serialized
-
-        if not skip_update_check:
-            my_claims = [claim
-                         for claim in self.getnameclaims(include_supports=False,
-                                                         skip_validate_signatures=True)
-                         if claim['name'] == name]
-            if len(my_claims) > 1:
-                return {'success': False,
-                        'reason': "Multiple claims (%i) already exist for %s, "
-                                  "dont know which claim to update" % (len(my_claims), name)}
-            elif my_claims:
-                log.info("There is an unspent claim in your wallet for this name, updating "
-                         "it instead")
-                return self.update(name, val, amount=amount, broadcast=broadcast,
-                                   claim_addr=claim_addr,
-                                   tx_fee=tx_fee, change_addr=change_addr,
-                                   certificate_id=certificate_id, raw=raw,
-                                   skip_validate_schema=skip_validate_schema)
 
         # prepare the tx
         outputs = [(TYPE_ADDRESS | TYPE_CLAIM, ((name, val), claim_addr), amount)]
