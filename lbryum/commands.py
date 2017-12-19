@@ -627,6 +627,23 @@ class Commands(object):
     @command('w')
     def claimhistory(self):
 
+        def get_claim_name_and_id(nout, tx):
+            claim_name, claim_id = None, None
+            tx_outs = tx.outputs()
+            tx_out = tx_outs[nout]
+            if tx_out[0] & TYPE_CLAIM:
+                claim_name, claim_value = tx_out[1][0]
+                claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
+                claim_id = encode_claim_id_hex(claim_id)
+            elif tx_out[0] & TYPE_UPDATE:
+                claim_name, claim_id, claim_value = tx_out[1][0]
+                claim_id = encode_claim_id_hex(claim_id)
+            elif tx_out[0] & TYPE_SUPPORT:
+                claim_name, claim_id = tx_out[1][0]
+                claim_id = encode_claim_id_hex(claim_id)
+
+            return claim_name, claim_id
+
         # claim_amt stores the previous amount of the claim
         # which helps in creating a running tally for getting the
         # update transactions correct value and sign
@@ -688,41 +705,26 @@ class Commands(object):
                     continue
 
                 prev_tx = self.wallet.transactions[prevout_hash]
-                prev_txn_ops = prev_tx.outputs()
+                prev_txn_outs = prev_tx.outputs()
 
-                for nout, prev_txn_op in enumerate(prev_txn_ops):
-                    if prev_txn_op[0] & TYPE_CLAIM:
-                        claim_name, claim_value = prev_txn_op[1][0]
-                        claim_id = claim_id_hash(rev_hex(prev_tx.hash()).decode('hex'), nout)
-                        claim_id = encode_claim_id_hex(claim_id)
-                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_op,
+                for nout, prev_txn_out in enumerate(prev_txn_outs):
+                    claim_name, claim_id = get_claim_name_and_id(nout, prev_tx)
+                    if prev_txn_out[0] & (TYPE_CLAIM | TYPE_UPDATE):
+                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_out,
                             tx_type="abandon"))
-                    elif prev_txn_op[0] & TYPE_UPDATE:
-                        claim_name, claim_id, claim_value = prev_txn_op[1][0]
-                        claim_id = encode_claim_id_hex(claim_id)
-                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_op,
-                            tx_type="abandon"))
-                    elif prev_txn_op[0] & TYPE_SUPPORT:
-                        claim_name, claim_id = prev_txn_op[1][0]
-                        claim_id = encode_claim_id_hex(claim_id)
-                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_op,
+                    elif prev_txn_out[0] & TYPE_SUPPORT:
+                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_out,
                             tx_type="support_abandon"))
             else:
                 for nout, tx_out in enumerate(tx_outs):
+                    claim_name, claim_id = get_claim_name_and_id(nout, tx)
                     if tx_out[0] & TYPE_SUPPORT:
-                        claim_name, claim_id = tx_out[1][0]
-                        claim_id = encode_claim_id_hex(claim_id)
                         support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                            tx_type="support", value = history_result['value']))
+                            tx_type="support", value=history_result['value']))
                     elif tx_out[0] & TYPE_UPDATE:
-                        claim_name, claim_id, claim_value = tx_out[1][0]
-                        claim_id = encode_claim_id_hex(claim_id)
                         update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
                             tx_type="update"))
                     elif tx_out[0] & TYPE_CLAIM:
-                        claim_name, claim_value = tx_out[1][0]
-                        claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
-                        claim_id = encode_claim_id_hex(claim_id)
                         claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
                             tx_type="claim"))
 
@@ -734,32 +736,40 @@ class Commands(object):
             results.append(result)
         return results
 
-    @command('wn')
+    @command('w')
     def tiphistory(self):
-        claim_ids_to_check = []
-        results = []
+        # claims is a dict consisting of claim addresses gruuped by claim_id
+        claims = dict()
+        results = list()
 
         claim_history = self.claimhistory()
-        for h in claim_history:
-            for supported in h['support_info']:
-                claim_ids_to_check.append(supported['claim_id'])
+        name_claims = self.wallet.get_name_claims(include_supports=False, exclude_expired=False)
 
-        claims = self.getclaimsbyids(claim_ids_to_check)
+        for name_claim in name_claims:
+            # https://stackoverflow.com/questions/20585920/how-to-add-multiple-values-to-a-dictionary-key-in-python
+            claims.setdefault(name_claim['claim_id'], set()).add(name_claim['address'])
 
         for h in claim_history:
             support_info = []
+
             for supported in h['support_info']:
-                claim = claims.get(supported['claim_id'])
-                if claim:
-                    if supported['address'] == claim['address']:
+                support_address = supported['address']
+                support_claim_id = supported['claim_id']
+
+                if not self.wallet.is_mine(support_address):
+                    supported['is_tip'] = True
+                else:
+                    if support_claim_id in claims and support_address in claims[support_claim_id]:
                         supported['is_tip'] = True
                     else:
                         supported['is_tip'] = False
+
                 support_info.append(supported)
             h['support_info'] = support_info
             results.append(h)
 
         return results
+
 
     @command('w')
     def transactionfee(self, txid):
