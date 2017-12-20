@@ -116,7 +116,8 @@ class Commands(object):
             # handle if no recommended keyring backend found
             self._keyring = None
 
-        if self.wallet and self.wallet.use_encryption and not password and self._keyring is not None:
+        if self.wallet and self.wallet.use_encryption and \
+                not password and self._keyring is not None:
             # see if we can find the wallet password in the key ring, if not the user must
             # provide it
             master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
@@ -697,36 +698,35 @@ class Commands(object):
             claim_infos = []
             abandon_info = []
 
-            if len(tx_outs) == 1 and (tx_outs[0][0] & TYPE_ADDRESS):
-                tx_in = tx.inputs()
-                prevout_hash = tx_in[0]['prevout_hash']
+            for nout, tx_out in enumerate(tx_outs):
+                claim_name, claim_id = get_claim_name_and_id(nout, tx)
+                if tx_out[0] & TYPE_SUPPORT:
+                    support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                        tx_type="support", value=history_result['value']))
+                elif tx_out[0] & TYPE_UPDATE:
+                    update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                        tx_type="update"))
+                elif tx_out[0] & TYPE_CLAIM:
+                    claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
+                        tx_type="claim"))
+                elif len(tx_outs) == 1 and (tx_out[0] & TYPE_ADDRESS):
+                    tx_in = tx.inputs()
+                    prevout_txid = tx_in[0]['prevout_hash']
 
-                if not prevout_hash in txids:
-                    continue
+                    if not prevout_txid in txids:
+                        continue
 
-                prev_tx = self.wallet.transactions[prevout_hash]
-                prev_txn_outs = prev_tx.outputs()
+                    prev_tx = self.wallet.transactions[prevout_txid]
+                    prev_txn_outs = prev_tx.outputs()
 
-                for nout, prev_txn_out in enumerate(prev_txn_outs):
-                    claim_name, claim_id = get_claim_name_and_id(nout, prev_tx)
-                    if prev_txn_out[0] & (TYPE_CLAIM | TYPE_UPDATE):
-                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_out,
-                            tx_type="abandon"))
-                    elif prev_txn_out[0] & TYPE_SUPPORT:
-                        abandon_info.append(get_info_dict(claim_name, claim_id, nout, prev_txn_out,
-                            tx_type="support_abandon"))
-            else:
-                for nout, tx_out in enumerate(tx_outs):
-                    claim_name, claim_id = get_claim_name_and_id(nout, tx)
-                    if tx_out[0] & TYPE_SUPPORT:
-                        support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                            tx_type="support", value=history_result['value']))
-                    elif tx_out[0] & TYPE_UPDATE:
-                        update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                            tx_type="update"))
-                    elif tx_out[0] & TYPE_CLAIM:
-                        claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                            tx_type="claim"))
+                    for nout, prev_txn_out in enumerate(prev_txn_outs):
+                        claim_name, claim_id = get_claim_name_and_id(nout, prev_tx)
+                        if prev_txn_out[0] & (TYPE_CLAIM | TYPE_UPDATE):
+                            abandon_info.append(get_info_dict(claim_name, claim_id, nout,
+                                prev_txn_out, tx_type="abandon"))
+                        elif prev_txn_out[0] & TYPE_SUPPORT:
+                            abandon_info.append(get_info_dict(claim_name, claim_id, nout,
+                                prev_txn_out, tx_type="support_abandon"))
 
             result = history_result
             result['support_info'] = support_infos
