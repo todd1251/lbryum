@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from StringIO import StringIO
 
+from lbryum.errors import InvalidPassword
+from lbryum.lbrycrd import pw_decode
 from lbryum.wallet import NewWallet, WalletStorage
 
 
@@ -36,7 +38,7 @@ class WalletTestCase(unittest.TestCase):
 
 
 class TestWalletStorage(WalletTestCase):
-    def test_read_dictionnary_from_file(self):
+    def test_read_dictionary_from_file(self):
         some_dict = {"a": "b", "c": "d"}
         contents = repr(some_dict)
         with open(self.wallet_path, "w") as f:
@@ -46,7 +48,7 @@ class TestWalletStorage(WalletTestCase):
         self.assertEqual("b", storage.get("a"))
         self.assertEqual("d", storage.get("c"))
 
-    def test_write_dictionnary_to_file(self):
+    def test_write_dictionary_to_file(self):
         storage = WalletStorage(self.wallet_path)
 
         some_dict = {"a": "b", "c": "d"}
@@ -63,6 +65,7 @@ class TestWalletStorage(WalletTestCase):
 
 class TestNewWallet(WalletTestCase):
     seed_text = "travel nowhere air position hill peace suffer parent beautiful rise blood power home crumble teach"
+    xprv_text = "xprv9s21ZrQH143K2RNUGjxcwJXKSzQeSoCp1GwLFBF8YVQ92TJUX7LXvwoCLVVyrHcPAbAaGQwnFydd8hftzAuTMRCzHue31ftg9wiGkkoVAaT"
     password = "secret"
 
     first_account_name = "account1"
@@ -102,3 +105,29 @@ class TestNewWallet(WalletTestCase):
         new_password = "secret2"
         self.wallet.update_password(self.password, new_password)
         self.wallet.get_seed(new_password)
+
+    def test_encryption(self):
+        self.storage.write()
+        wallet_data = json.load(open(self.wallet_path, "r"))
+        self.assertTrue(wallet_data['use_encryption'])
+
+        # retrieve the encrypted values from wallet storage
+        enc_xprv_key = wallet_data['master_private_keys']['x/']
+        enc_seed = wallet_data['seed']
+
+        # the xprv key and seed should not be in plain text in the wallet storage
+        self.assertNotEqual(self.seed_text, enc_seed)
+        self.assertNotEqual(self.xprv_text, enc_xprv_key)
+
+        # decoding the encrypted xprv key and seed should return the original values
+        self.assertEqual(self.seed_text, pw_decode(enc_seed, self.password))
+        self.assertEqual(self.xprv_text, pw_decode(enc_xprv_key, self.password))
+        self.assertEqual(self.xprv_text, self.wallet.get_master_private_key('x/', self.password))
+
+    def test_check_password(self):
+        # no errors should occur if the password is valid
+        self.wallet.check_password(self.password)
+
+    def test_check_invalid_password(self):
+        with self.assertRaises(InvalidPassword):
+            self.wallet.check_password('invalid')
