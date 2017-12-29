@@ -28,13 +28,13 @@ class WalletTestCase(unittest.TestCase):
 
         self._saved_stdout = sys.stdout
         self._stdout_buffer = StringIO()
-        #sys.stdout = self._stdout_buffer
+        sys.stdout = self._stdout_buffer
 
     def tearDown(self):
         super(WalletTestCase, self).tearDown()
         shutil.rmtree(self.user_dir)
         # Restore the "real" stdout
-        #sys.stdout = self._saved_stdout
+        sys.stdout = self._saved_stdout
 
 
 class TestWalletStorage(WalletTestCase):
@@ -109,6 +109,7 @@ class TestNewWallet(WalletTestCase):
     def test_encryption(self):
         self.storage.write()
         wallet_data = json.load(open(self.wallet_path, "r"))
+        self.assertTrue(wallet_data['use_encryption'])
 
         # retrieve the encrypted values from wallet storage
         enc_xprv_key = wallet_data['master_private_keys']['x/']
