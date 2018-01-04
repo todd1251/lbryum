@@ -465,8 +465,7 @@ class Commands(object):
             raise BaseException('cannot verify alias', x)
         return out['address']
 
-    @command('n')
-    def sweep(self, privkey, destination, tx_fee=None, nocheck=False):
+    def _mksweeptx(self, privkey, destination, tx_fee, nocheck):
         """Sweep private keys. Returns a transaction that spends UTXOs from
         privkey to a destination address. The transaction is not
         broadcasted."""
@@ -477,6 +476,21 @@ class Commands(object):
             tx_fee = 0.0001
         fee = int(Decimal(tx_fee) * COIN)
         return Transaction.sweep(privkeys, self.network, dest, fee)
+
+    @command('n')
+    def sweep(self, privkey, destination, tx_fee=None, nocheck=False):
+        """Sweep private keys. Returns a transaction that spends UTXOs from
+        privkey to a destination address. The transaction is not
+        broadcasted."""
+        tx = self._mksweeptx(privkey, destination, tx_fee, nocheck)
+        return tx.as_dict() if tx else None
+
+    @command('n')
+    def sweepandsend(self, privkey, destination, tx_fee=None, nocheck=False):
+        """Sweep private keys. Broadcasts a transaction that spends UTXOs from
+        privkey to a destination address."""
+        tx = self._mksweeptx(privkey, destination, tx_fee, nocheck)
+        return self.network.synchronous_get(('blockchain.transaction.broadcast', [str(tx)]))
 
     @command('wp')
     def signmessage(self, address, message):
