@@ -126,13 +126,21 @@ class LbryCrd(PrintError):
         return hash_encode(PoWHash(self.serialize_header(header).decode('hex')))
 
     def path(self):
-        return os.path.join(self.config.path, 'blockchain_headers')
+        if self.BLOCKCHAIN_NAME == 'lbrycrd_main':
+            filename = 'blockchain_headers'
+        else:
+            filename = '%s_headers' % self.BLOCKCHAIN_NAME.split("_")[1]
+        return os.path.join(self.config.path, filename)
 
     def init_headers_file(self):
         filename = self.path()
         if os.path.exists(filename):
+            if self.BLOCKCHAIN_NAME == 'lbrycrd_regtest':
+                open(filename, 'w').close()
             return
         try:
+            if self.BLOCKCHAIN_NAME != "lbrycrd_main":
+                raise Exception("headers for %s are not available from s3" % self.BLOCKCHAIN_NAME)
             socket.setdefaulttimeout(30)
             log.info("downloading headers from %s", self.headers_url)
             self.retrieving_headers = True
