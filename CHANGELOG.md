@@ -8,7 +8,7 @@ labeled as 2.7.1. Subsequent releases will follow
 
 ## [Unreleased]
 ### Security
-  *
+  * Stop allowing CORS for the JSON-RPC server (applies to lbryum daemon). See [electrum/issues/3374](https://github.com/spesmilo/electrum/issues/3374)
   *
 
 ### Fixed

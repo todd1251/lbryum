@@ -2,7 +2,7 @@ import ast
 import os
 
 import jsonrpclib
-from jsonrpclib.SimpleJSONRPCServer import SimpleJSONRPCRequestHandler, SimpleJSONRPCServer
+from jsonrpclib.SimpleJSONRPCServer import SimpleJSONRPCServer
 
 from lbryum.commands import Commands
 from lbryum.simple_config import SimpleConfig
@@ -29,18 +29,6 @@ def get_daemon(config):
         pass
 
 
-class RequestHandler(SimpleJSONRPCRequestHandler):
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.end_headers()
-
-    def end_headers(self):
-        self.send_header("Access-Control-Allow-Headers",
-                         "Origin, X-Requested-With, Content-Type, Accept")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        SimpleJSONRPCRequestHandler.end_headers(self)
-
-
 class Daemon(DaemonThread):
     def __init__(self, config, network):
         DaemonThread.__init__(self)
@@ -51,8 +39,7 @@ class Daemon(DaemonThread):
         self.cmd_runner = Commands(self.config, self.wallet, self.network)
         host = config.get('rpchost', 'localhost')
         port = config.get('rpcport', 0)
-        self.server = SimpleJSONRPCServer((host, port), requestHandler=RequestHandler,
-                                          logRequests=False)
+        self.server = SimpleJSONRPCServer((host, port), logRequests=False)
         with open(lockfile(config), 'w') as f:
             f.write(repr(self.server.socket.getsockname()))
         self.server.timeout = 0.1
