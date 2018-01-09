@@ -33,7 +33,7 @@ labeled as 2.7.1. Subsequent releases will follow
   * Tip information is now always returned in `claimhistory` command
   * Information about abandoned claim/update/support is now returned in `claimhistory` command
   * Changed `offline_parse_and_validate_claim_result` and `parse_and_validate_claim_result` to include a permanent URL to claim and/or certificate.
-  * 
+  * Broadcast option for `sweep` command
 
 ### Added
   * Added `getleastusedchangeaddress` command

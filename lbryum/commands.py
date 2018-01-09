@@ -465,32 +465,29 @@ class Commands(object):
             raise BaseException('cannot verify alias', x)
         return out['address']
 
-    def _mksweeptx(self, privkey, destination, tx_fee, nocheck):
+    @command('wn')
+    def sweep(self, privkey, destination, tx_fee=None, nocheck=False, broadcast=False):
         """Sweep private keys. Returns a transaction that spends UTXOs from
         privkey to a destination address. The transaction is not
-        broadcasted."""
+        broadcasted unless the broadcast option is specified."""
         privkeys = privkey if type(privkey) is list else [privkey]
         self.nocheck = nocheck
         dest = self._resolver(destination)
         if tx_fee is None:
             tx_fee = 0.0001
         fee = int(Decimal(tx_fee) * COIN)
-        return Transaction.sweep(privkeys, self.network, dest, fee)
+        tx = Transaction.sweep(privkeys, self.network, dest, fee)
 
-    @command('n')
-    def sweep(self, privkey, destination, tx_fee=None, nocheck=False):
-        """Sweep private keys. Returns a transaction that spends UTXOs from
-        privkey to a destination address. The transaction is not
-        broadcasted."""
-        tx = self._mksweeptx(privkey, destination, tx_fee, nocheck)
-        return tx.as_dict() if tx else None
+        if broadcast:
+            success, out = self.wallet.send_tx(tx, wait=False)
+            if not success:
+                return {'success': False, 'reason': out}
 
-    @command('n')
-    def sweepandsend(self, privkey, destination, tx_fee=None, nocheck=False):
-        """Sweep private keys. Broadcasts a transaction that spends UTXOs from
-        privkey to a destination address."""
-        tx = self._mksweeptx(privkey, destination, tx_fee, nocheck)
-        return self.network.synchronous_get(('blockchain.transaction.broadcast', [str(tx)]))
+        return {
+            'success': True,
+            'tx': str(tx),
+            'fee': str(Decimal(tx_fee) / COIN)
+        }
 
     @command('wp')
     def signmessage(self, address, message):
