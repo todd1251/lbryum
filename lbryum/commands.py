@@ -636,6 +636,35 @@ class Commands(object):
 
     @command('w')
     def claimhistory(self):
+        """
+        Returns the transaction list augmented with auxilary information
+        about claim, supports, tips, updates and abandons
+
+        :returns list of dictionaries with information
+        """
+
+        # claim_amt stores the previous amount of the claim
+        # which helps in creating a running tally for getting the
+        # update transactions correct value and sign
+        claim_amt = dict()
+
+        # claims is used to store adrresses related to a claim(excluding supports and expired)
+        claims = dict()
+        name_claims = self.wallet.get_name_claims(include_supports=False, exclude_expired=False)
+
+        for name_claim in name_claims:
+            # how-to-add-multiple-values-to-a-dictionary-key-in-python
+            # https://stackoverflow.com/questions/20585920
+            claims.setdefault(name_claim['claim_id'], set()).add(name_claim['address'])
+
+        def is_outpoint_tip(claim_id, address):
+            if not self.wallet.is_mine(address):
+                return True
+            else:
+                if claim_id in claims and address in claims[claim_id]:
+                    return True
+                else:
+                    return False
 
         def get_claim_name_and_id(nout, tx):
             claim_name, claim_id = None, None
@@ -654,20 +683,20 @@ class Commands(object):
 
             return claim_name, claim_id
 
-        # claim_amt stores the previous amount of the claim
-        # which helps in creating a running tally for getting the
-        # update transactions correct value and sign
-        claim_amt = dict()
         def get_info_dict(name, claim_id, nout, txo, tx_type, value=None):
             # balance_delta is init to amount because, if tx_type is support and value >=0
             # then balance_delta would remain undefined
             balance_delta = amount = float(Decimal(txo[2]) / Decimal(COIN))
+            address = txo[1][1]
+            is_tip = bool()
 
             if tx_type == "claim":
                 balance_delta = -1 * amount
                 claim_amt[claim_id] = balance_delta
-            elif tx_type == "support" and value < 0:
-                balance_delta = -1 * amount
+            elif tx_type == "support":
+                is_tip = is_outpoint_tip(claim_id, address)
+                if value < 0:
+                    balance_delta = -1 * amount
             elif tx_type == "update":
                 abs_amount = abs(amount)
 
@@ -683,15 +712,19 @@ class Commands(object):
             elif tx_type == "abandon":
                 balance_delta = abs(claim_amt[claim_id])
 
-
-            return {
+            returnDict = {
                 'claim_name': name,
                 'claim_id': claim_id,
                 'nout': nout,
                 'balance_delta': balance_delta,
                 'amount': amount,
-                'address': txo[1][1]
+                'address': address
             }
+
+            if tx_type == "support":
+                returnDict['is_tip'] = is_tip
+
+            return returnDict
 
         history = self.history()
         txids = [_history['txid'] for _history in history]
@@ -744,41 +777,6 @@ class Commands(object):
             result['abandon_info'] = abandon_info
             results.append(result)
         return results
-
-    @command('w')
-    def tiphistory(self):
-        # claims is a dict consisting of claim addresses gruuped by claim_id
-        claims = dict()
-        results = list()
-
-        claim_history = self.claimhistory()
-        name_claims = self.wallet.get_name_claims(include_supports=False, exclude_expired=False)
-
-        for name_claim in name_claims:
-            # https://stackoverflow.com/questions/20585920/how-to-add-multiple-values-to-a-dictionary-key-in-python
-            claims.setdefault(name_claim['claim_id'], set()).add(name_claim['address'])
-
-        for h in claim_history:
-            support_info = []
-
-            for supported in h['support_info']:
-                support_address = supported['address']
-                support_claim_id = supported['claim_id']
-
-                if not self.wallet.is_mine(support_address):
-                    supported['is_tip'] = True
-                else:
-                    if support_claim_id in claims and support_address in claims[support_claim_id]:
-                        supported['is_tip'] = True
-                    else:
-                        supported['is_tip'] = False
-
-                support_info.append(supported)
-            h['support_info'] = support_info
-            results.append(h)
-
-        return results
-
 
     @command('w')
     def transactionfee(self, txid):

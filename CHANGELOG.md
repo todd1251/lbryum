@@ -40,7 +40,7 @@ labeled as 2.7.1. Subsequent releases will follow
   *
 
 ### Removed
-  *
+  * Removed `tiphistory` command
   *
 
 
