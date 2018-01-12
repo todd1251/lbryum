@@ -666,22 +666,25 @@ class Commands(object):
                 else:
                     return False
 
-        def get_claim_name_and_id(nout, tx):
-            claim_name, claim_id = None, None
+        def get_claim_info(nout, tx):
+            claim_name, claim_id, claim_addr = None, None, None
             tx_outs = tx.outputs()
             tx_out = tx_outs[nout]
             if tx_out[0] & TYPE_CLAIM:
                 claim_name, claim_value = tx_out[1][0]
                 claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
                 claim_id = encode_claim_id_hex(claim_id)
+                claim_addr = tx_out[1][1]
             elif tx_out[0] & TYPE_UPDATE:
                 claim_name, claim_id, claim_value = tx_out[1][0]
                 claim_id = encode_claim_id_hex(claim_id)
+                claim_addr = tx_out[1][1]
             elif tx_out[0] & TYPE_SUPPORT:
                 claim_name, claim_id = tx_out[1][0]
                 claim_id = encode_claim_id_hex(claim_id)
+                claim_addr = tx_out[1][1]
 
-            return claim_name, claim_id
+            return claim_name, claim_id, claim_addr
 
         def get_info_dict(name, claim_id, nout, txo, tx_type, value=None):
             # balance_delta is init to amount because, if tx_type is support and value >=0
@@ -741,7 +744,8 @@ class Commands(object):
             abandon_info = []
 
             for nout, tx_out in enumerate(tx_outs):
-                claim_name, claim_id = get_claim_name_and_id(nout, tx)
+                claim_name, claim_id, claim_addr = get_claim_info(nout, tx)
+
                 if tx_out[0] & TYPE_SUPPORT:
                     support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
                         tx_type="support", value=history_result['value']))
@@ -751,24 +755,43 @@ class Commands(object):
                 elif tx_out[0] & TYPE_CLAIM:
                     claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
                         tx_type="claim"))
-                elif len(tx_outs) == 1 and (tx_out[0] & TYPE_ADDRESS):
-                    tx_in = tx.inputs()
-                    prevout_txid = tx_in[0]['prevout_hash']
+                elif tx_out[0] & TYPE_ADDRESS:
+                    # A txn abandons a claim/update/support if:
+                    #   check_0: The txn is TYPE_ADDRESS
+                    #   check_1: It spends the claim/update/support output
+                    #   check_2: It does not spend to an output for an update to the same claim
 
-                    if not prevout_txid in txids:
-                        continue
+                    for tx_in in tx.inputs():
+                        in_address = tx_in['address']
+                        prevout_txid = tx_in['prevout_hash']
 
-                    prev_tx = self.wallet.transactions[prevout_txid]
-                    prev_txn_outs = prev_tx.outputs()
+                        # We don't have the transaction(so this one can't be abandon)
+                        if not prevout_txid in txids:
+                            continue
 
-                    for nout, prev_txn_out in enumerate(prev_txn_outs):
-                        claim_name, claim_id = get_claim_name_and_id(nout, prev_tx)
-                        if prev_txn_out[0] & (TYPE_CLAIM | TYPE_UPDATE):
-                            abandon_info.append(get_info_dict(claim_name, claim_id, nout,
-                                prev_txn_out, tx_type="abandon"))
-                        elif prev_txn_out[0] & TYPE_SUPPORT:
-                            abandon_info.append(get_info_dict(claim_name, claim_id, nout,
-                                prev_txn_out, tx_type="support_abandon"))
+                        # Enumerate out_claims with current txn's claims(for check_2)
+                        out_claims = set()
+                        for n, op in enumerate(tx_outs):
+                            claim_name, claim_id, claim_addr = get_claim_info(n, tx)
+                            if op[0] & (TYPE_SUPPORT | TYPE_CLAIM | TYPE_UPDATE):
+                                out_claims.add(claim_name + '#' + claim_id)
+
+                        prev_tx = self.wallet.transactions[prevout_txid]
+                        prev_txn_outs = prev_tx.outputs()
+
+                        # Checks if the transaction abandons the previous claim(check_1)
+                        for nout, prev_txn_out in enumerate(prev_txn_outs):
+                            p_claim_name, p_claim_id, p_claim_addr = get_claim_info(nout, prev_tx)
+                            key = None
+                            if not (p_claim_name is None and p_claim_id is None):
+                                key = p_claim_name + '#' + p_claim_id
+                            if in_address == p_claim_addr and key not in out_claims:
+                                if prev_txn_out[0] & (TYPE_CLAIM | TYPE_UPDATE):
+                                    abandon_info.append(get_info_dict(p_claim_name, p_claim_id,
+                                        nout, prev_txn_out, tx_type="abandon"))
+                                elif prev_txn_out[0] & TYPE_SUPPORT:
+                                    abandon_info.append(get_info_dict(p_claim_name, p_claim_id,
+                                        nout, prev_txn_out, tx_type="support_abandon"))
 
             result = history_result
             result['support_info'] = support_infos
