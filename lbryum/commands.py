@@ -552,32 +552,7 @@ class Commands(object):
         return self.wallet.get_least_used_address(account)
 
     @command('wpn')
-    def payto(self, destination, amount, tx_fee=None, from_addr=None, change_addr=None,
-              nocheck=False, unsigned=False, broadcast=True):
-        """
-        Create a raw transaction to send to an address
-
-        :param destination: address to send to
-        :param amount: amount to send
-        :param tx_fee:  transaction fee to pay if specified
-        :param from_addr: send from address if specified
-        :param change_addr: change address to return change to if specified
-        :param nocheck: bool, do not verify alias if True
-        :param unsigned: bool, sign the trasaction if True
-        :param broadcast: bool, broadcast transaction if True
-
-        :return success: True if command was succesful
-        :return reason: reason for command failure if success == False
-        :return tx: transaction in hex
-        :return txid: txid of transaction
-        :return fee: fee paid for transaction
-        """
-        domain = [from_addr] if from_addr else None
-        tx = self._mktx([(destination, amount)], tx_fee, change_addr, domain, nocheck, unsigned)
-        return self._pay_tx(tx, broadcast)
-
-    @command('wpn')
-    def paytomany(self, outputs, tx_fee=None, from_addr=None, change_addr=None, nocheck=False,
+    def payto(self, outputs, tx_fee=None, from_addr=None, change_addr=None, nocheck=False,
                   unsigned=False, broadcast=True):
         """
         Create a multi-output transaction.
