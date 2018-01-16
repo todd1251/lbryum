@@ -27,6 +27,7 @@ labeled as 2.7.1. Subsequent releases will follow
   * Only consider addresses with less than 100 utxos for re-use.
   * Set the blockchain to use in lbryschema when it is set in lbryum
   * Use separate headers files for different chains, the default `blockchain_headers` for lbrycrd_main is unchanged. Regtest headers are saved to `regtest_headers`, and testnet to `testnet_headers`.
+  * Reworked payto, paytoandsend, paytomany, paytomanyandsend into single payto command
 
 ### Added
   * Added `getleastusedchangeaddress` command

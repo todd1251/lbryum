@@ -551,21 +551,45 @@ class Commands(object):
     def getleastusedaddress(self, account=None):
         return self.wallet.get_least_used_address(account)
 
-    @command('wp')
-    def payto(self, destination, amount, tx_fee=None, from_addr=None, change_addr=None,
-              nocheck=False, unsigned=False):
-        """Create a raw transaction. """
-        domain = [from_addr] if from_addr else None
-        tx = self._mktx([(destination, amount)], tx_fee, change_addr, domain, nocheck, unsigned)
-        return tx.as_dict()
-
     @command('wpn')
-    def paytoandsend(self, destination, amount, tx_fee=None, from_addr=None, change_addr=None,
-                     nocheck=False, unsigned=False):
-        """Create and broadcast transaction. """
+    def payto(self, outputs, tx_fee=None, from_addr=None, change_addr=None, nocheck=False,
+                  unsigned=False, broadcast=True):
+        """
+        Create a multi-output transaction.
+
+        :param outputs: list of destinations specified by [address, amount]
+        :param tx_fee:  transaction fee to pay if specified
+        :param from_addr: send from address if specified
+        :param change_addr: change address to return change to if specified
+        :param nocheck: bool, do not verify alias if True
+        :param unsigned: bool, sign the trasaction if True
+        :param broadcast: bool, broadcast transaction if True
+
+        :return success: True if command was succesful
+        :return reason: reason for command failure if success == False
+        :return tx: transaction in hex
+        :return txid: txid of transaction
+        :return fee: fee paid for transaction
+        """
         domain = [from_addr] if from_addr else None
-        tx = self._mktx([(destination, amount)], tx_fee, change_addr, domain, nocheck, unsigned)
-        return self.network.synchronous_get(('blockchain.transaction.broadcast', [str(tx)]))
+        tx = self._mktx(outputs, tx_fee, change_addr, domain, nocheck, unsigned)
+        return self._pay_tx(tx, broadcast)
+
+    def _pay_tx(self, tx, broadcast):
+        tx_str = str(tx)
+        txid = tx.hash()
+        fee = str(Decimal(tx.get_fee()) / COIN)
+        ret = {'tx':tx_str, 'txid':txid, 'fee':fee}
+
+        if broadcast:
+            success, out = self.wallet.send_tx(tx)
+            if not success:
+                ret['success'] = False
+                ret['reason'] = out
+                return ret
+
+        ret['success'] = True
+        return ret
 
     @command('w')
     def waitfortxinwallet(self, txid, timeout=30):
@@ -608,21 +632,6 @@ class Commands(object):
                            claim_addr=destination, tx_fee=tx_fee, change_addr=change_addr,
                            raw=False, skip_validate_schema=skip_validate_schema)
 
-    @command('wp')
-    def paytomany(self, outputs, tx_fee=None, from_addr=None, change_addr=None, nocheck=False,
-                  unsigned=False):
-        """Create a multi-output transaction. """
-        domain = [from_addr] if from_addr else None
-        tx = self._mktx(outputs, tx_fee, change_addr, domain, nocheck, unsigned)
-        return tx.as_dict()
-
-    @command('wp')
-    def paytomanyandsend(self, outputs, tx_fee=None, from_addr=None, change_addr=None,
-                         nocheck=False, unsigned=False):
-        """Create and broadcast a multi-output transaction. """
-        domain = [from_addr] if from_addr else None
-        tx = self._mktx(outputs, tx_fee, change_addr, domain, nocheck, unsigned)
-        return self.network.synchronous_get(('blockchain.transaction.broadcast', [str(tx)]))
 
     @command('w')
     def claimhistory(self):
