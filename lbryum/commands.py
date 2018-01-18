@@ -2629,8 +2629,21 @@ class Commands(object):
 
         fee = self._calculate_fee(inputs, outputs, tx_fee)
         if fee > txout_value:
-            return {'success': False, 'reason': 'transaction fee exceeds amount to abandon'}
-        return_value = txout_value - fee
+            spendable_coins = self.wallet.get_spendable_coins()
+            spendable_coins = sorted(spendable_coins, key=lambda k: k['value'])
+            spent_coins = []
+            txout_total = txout_value
+            for coin in spendable_coins:
+                spent_coins.append(coin)
+                txout_total += coin['value']
+                if txout_total >= fee:
+                    break
+            if fee > txout_total:
+                return {'success': False, 'reason': 'transaction fee exceeds amount available'}
+            inputs.append(*spent_coins)
+            return_value = txout_total - fee
+        else:
+            return_value = txout_value - fee
 
         # create transaction
         outputs = [(TYPE_ADDRESS, return_addr, return_value)]
