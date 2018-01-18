@@ -116,7 +116,8 @@ class Commands(object):
             # handle if no recommended keyring backend found
             self._keyring = None
 
-        if self.wallet and self.wallet.use_encryption and not password and self._keyring:
+        if self.wallet and self.wallet.use_encryption and \
+                not password and self._keyring is not None:
             # see if we can find the wallet password in the key ring, if not the user must
             # provide it
             master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
@@ -635,37 +636,101 @@ class Commands(object):
 
     @command('w')
     def claimhistory(self):
+        """
+        Returns the transaction list augmented with auxilary information
+        about claim, supports, tips, updates and abandons
 
+        :returns list of dictionaries with information
+        """
+
+        # claim_amt stores the previous amount of the claim
+        # which helps in creating a running tally for getting the
+        # update transactions correct value and sign
         claim_amt = dict()
-        def get_info_dict(name, claim_id, nout, txo, value, tx_type):
-            amount = float(Decimal(txo[2]) / Decimal(COIN))
+
+        # claims is used to store adrresses related to a claim(excluding supports and expired)
+        claims = dict()
+        name_claims = self.wallet.get_name_claims(include_supports=False, exclude_expired=False)
+
+        for name_claim in name_claims:
+            # how-to-add-multiple-values-to-a-dictionary-key-in-python
+            # https://stackoverflow.com/questions/20585920
+            claims.setdefault(name_claim['claim_id'], set()).add(name_claim['address'])
+
+        def is_outpoint_tip(claim_id, address):
+            if not self.wallet.is_mine(address):
+                return True
+            else:
+                if claim_id in claims and address in claims[claim_id]:
+                    return True
+                else:
+                    return False
+
+        def get_claim_info(nout, tx):
+            claim_name, claim_id, claim_addr = None, None, None
+            tx_outs = tx.outputs()
+            tx_out = tx_outs[nout]
+            if tx_out[0] & TYPE_CLAIM:
+                claim_name, claim_value = tx_out[1][0]
+                claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
+                claim_id = encode_claim_id_hex(claim_id)
+                claim_addr = tx_out[1][1]
+            elif tx_out[0] & TYPE_UPDATE:
+                claim_name, claim_id, claim_value = tx_out[1][0]
+                claim_id = encode_claim_id_hex(claim_id)
+                claim_addr = tx_out[1][1]
+            elif tx_out[0] & TYPE_SUPPORT:
+                claim_name, claim_id = tx_out[1][0]
+                claim_id = encode_claim_id_hex(claim_id)
+                claim_addr = tx_out[1][1]
+
+            return claim_name, claim_id, claim_addr
+
+        def get_info_dict(name, claim_id, nout, txo, tx_type, value=None):
+            # balance_delta is init to amount because, if tx_type is support and value >=0
+            # then balance_delta would remain undefined
+            balance_delta = amount = float(Decimal(txo[2]) / Decimal(COIN))
+            address = txo[1][1]
+            is_tip = bool()
 
             if tx_type == "claim":
-                amount = -1 * amount
-                claim_amt[claim_id] = amount
-            elif tx_type == "support" and value < 0:
-                amount = -1 * amount
+                balance_delta = -1 * amount
+                claim_amt[claim_id] = balance_delta
+            elif tx_type == "support":
+                is_tip = is_outpoint_tip(claim_id, address)
+                if value < 0:
+                    balance_delta = -1 * amount
             elif tx_type == "update":
                 abs_amount = abs(amount)
+
                 if claim_id in claim_amt:
                     # the previous update or claim is known already
                     abs_prev_amount = abs(claim_amt[claim_id])
                     claim_amt[claim_id] = amount
-                    amount = abs_prev_amount - abs_amount
+                    balance_delta = abs_prev_amount - abs_amount
                 else:
                     # this is a claim that was sent to us via an update transaction
-                    amount = abs_amount
+                    balance_delta = abs_amount
                     claim_amt[claim_id] = abs_amount
-            return {
+            elif tx_type == "abandon":
+                balance_delta = abs(claim_amt[claim_id])
+
+            returnDict = {
                 'claim_name': name,
                 'claim_id': claim_id,
                 'nout': nout,
-                'balance_delta': amount,
-                'amount': float(Decimal(txo[2]) / Decimal(COIN)),
-                'address': txo[1][1]
+                'balance_delta': balance_delta,
+                'amount': amount,
+                'address': address
             }
 
+            if tx_type == "support":
+                returnDict['is_tip'] = is_tip
+
+            return returnDict
+
         history = self.history()
+        txids = [_history['txid'] for _history in history]
         results = []
 
         for history_result in history:
@@ -676,58 +741,64 @@ class Commands(object):
             support_infos = []
             update_infos = []
             claim_infos = []
+            abandon_info = []
 
             for nout, tx_out in enumerate(tx_outs):
+                claim_name, claim_id, claim_addr = get_claim_info(nout, tx)
+
                 if tx_out[0] & TYPE_SUPPORT:
-                    claim_name, claim_id = tx_out[1][0]
-                    claim_id = encode_claim_id_hex(claim_id)
                     support_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                        history_result['value'], tx_type="support"))
+                        tx_type="support", value=history_result['value']))
                 elif tx_out[0] & TYPE_UPDATE:
-                    claim_name, claim_id, claim_value = tx_out[1][0]
-                    claim_id = encode_claim_id_hex(claim_id)
                     update_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                        history_result['value'], tx_type="update"))
+                        tx_type="update"))
                 elif tx_out[0] & TYPE_CLAIM:
-                    claim_name, claim_value = tx_out[1][0]
-                    claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
-                    claim_id = encode_claim_id_hex(claim_id)
                     claim_infos.append(get_info_dict(claim_name, claim_id, nout, tx_out,
-                        history_result['value'], tx_type="claim"))
+                        tx_type="claim"))
+                elif tx_out[0] & TYPE_ADDRESS:
+                    # A txn abandons a claim/update/support if:
+                    #   check_0: The txn is TYPE_ADDRESS
+                    #   check_1: It spends the claim/update/support output
+                    #   check_2: It does not spend to an output for an update to the same claim
+
+                    for tx_in in tx.inputs():
+                        in_address = tx_in['address']
+                        prevout_txid = tx_in['prevout_hash']
+
+                        # We don't have the transaction(so this one can't be abandon)
+                        if not prevout_txid in txids:
+                            continue
+
+                        # Enumerate out_claims with current txn's claims(for check_2)
+                        out_claims = set()
+                        for n, op in enumerate(tx_outs):
+                            claim_name, claim_id, claim_addr = get_claim_info(n, tx)
+                            if op[0] & (TYPE_SUPPORT | TYPE_CLAIM | TYPE_UPDATE):
+                                out_claims.add(claim_name + '#' + claim_id)
+
+                        prev_tx = self.wallet.transactions[prevout_txid]
+                        prev_txn_outs = prev_tx.outputs()
+
+                        # Checks if the transaction abandons the previous claim(check_1)
+                        for nout, prev_txn_out in enumerate(prev_txn_outs):
+                            p_claim_name, p_claim_id, p_claim_addr = get_claim_info(nout, prev_tx)
+                            key = None
+                            if not (p_claim_name is None and p_claim_id is None):
+                                key = p_claim_name + '#' + p_claim_id
+                            if in_address == p_claim_addr and key not in out_claims:
+                                if prev_txn_out[0] & (TYPE_CLAIM | TYPE_UPDATE):
+                                    abandon_info.append(get_info_dict(p_claim_name, p_claim_id,
+                                        nout, prev_txn_out, tx_type="abandon"))
+                                elif prev_txn_out[0] & TYPE_SUPPORT:
+                                    abandon_info.append(get_info_dict(p_claim_name, p_claim_id,
+                                        nout, prev_txn_out, tx_type="support_abandon"))
 
             result = history_result
             result['support_info'] = support_infos
             result['update_info'] = update_infos
             result['claim_info'] = claim_infos
+            result['abandon_info'] = abandon_info
             results.append(result)
-        return results
-
-    @command('wn')
-    def tiphistory(self):
-        claim_ids_to_check = []
-        results = []
-
-        claim_history = self.claimhistory()
-        for h in claim_history:
-            for supported in h['support_info']:
-                claim_ids_to_check.append(supported['claim_id'])
-
-        claims = self.getclaimsbyids(claim_ids_to_check)
-
-        for h in claim_history:
-            support_info = []
-            for supported in h['support_info']:
-                claim_ids_to_check.append(supported['claim_id'])
-                claim = claims.get(supported['claim_id'])
-                if claim:
-                    if supported['address'] == claim['address']:
-                        supported['is_tip'] = True
-                    else:
-                        supported['is_tip'] = False
-                    support_info.append(supported)
-            h['support_info'] = support_info
-            results.append(h)
-
         return results
 
     @command('w')

@@ -28,6 +28,9 @@ labeled as 2.7.1. Subsequent releases will follow
   * Set the blockchain to use in lbryschema when it is set in lbryum
   * Use separate headers files for different chains, the default `blockchain_headers` for lbrycrd_main is unchanged. Regtest headers are saved to `regtest_headers`, and testnet to `testnet_headers`.
   * Reworked payto, paytoandsend, paytomany, paytomanyandsend into single payto command
+  * Tip information is now always returned in `claimhistory` command
+  * Information about abandoned claim/update/support is now returned in `claimhistory` command
+  *
 
 ### Added
   * Added `getleastusedchangeaddress` command
@@ -36,9 +39,10 @@ labeled as 2.7.1. Subsequent releases will follow
   * Added `getcertificatesforsigning` command
   * Added `lock_wallet`, `decrypt_wallet`, and `update_passwords` functions and `locked` property to `Commands` class
   * Added OS keyring support for storing the wallet encryption password
+  *
 
 ### Removed
-  *
+  * Removed `tiphistory` command
   *
 
 
