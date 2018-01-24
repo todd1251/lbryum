@@ -40,32 +40,21 @@ class MocWallet(wallet.NewWallet):
                 })
 
     def add_address_transaction(self, amount):
-        in_address = self.create_new_address()
         out_address = self.create_new_address()
-        tx = transaction.Transaction.from_io(
-            [{
-                'address': in_address,
-                'prevout_hash': '3140eb24b43386f35ba69e3875eb6c93130ac66201d01c58f598defc949a5c2a',
-                'prevout_n': 0
-            }],
-            [
-                (TYPE_ADDRESS, out_address, amount)
-            ]
+        return self._add_transaction(
+            out_address, amount,
+            (TYPE_ADDRESS, out_address, amount)
         )
-        self.sign_transaction(tx, '')
-        tx.raw = tx.serialize()
-        tx_hash = tx.hash()
-        self.history.setdefault(out_address, [])
-        self.history[out_address].append([tx.hash(), 1])
-        self.txo[tx_hash] = {
-            out_address: [(0, amount, False)]
-        }
-        self.transactions[tx_hash] = tx
-        return out_address
 
     def add_claim_transaction(self, name, amount):
-        in_address = self.create_new_address()
         out_address = self.create_new_address()
+        return self._add_transaction(
+            out_address, amount,
+            (TYPE_CLAIM | TYPE_SCRIPT, ((name, ''), out_address), amount)
+        )
+
+    def _add_transaction(self, out_address, out_amount, out_data):
+        in_address = self.create_new_address()
         tx = transaction.Transaction.from_io(
             [{
                 'address': in_address,
@@ -73,7 +62,7 @@ class MocWallet(wallet.NewWallet):
                 'prevout_n': 0
             }],
             [
-                (TYPE_CLAIM | TYPE_SCRIPT, ((name, ''), out_address), amount)
+                out_data
             ]
         )
         self.sign_transaction(tx, '')
@@ -82,7 +71,7 @@ class MocWallet(wallet.NewWallet):
         self.history.setdefault(out_address, [])
         self.history[out_address].append([tx.hash(), 1])
         self.txo[tx_hash] = {
-            out_address: [(0, amount, False)]
+            out_address: [(0, out_amount, False)]
         }
         self.transactions[tx_hash] = tx
         return tx_hash

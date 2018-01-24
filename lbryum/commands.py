@@ -32,7 +32,7 @@ from lbryum.base import base_decode
 from lbryum.transaction import Transaction
 from lbryum.transaction import decode_claim_script, deserialize as deserialize_transaction
 from lbryum.transaction import get_address_from_output_script, script_GetOp
-from lbryum.errors import InvalidProofError, NotEnoughFunds
+from lbryum.errors import InvalidProofError, NotEnoughFunds, InvalidClaimId
 from lbryum.util import format_satoshis, rev_hex
 from lbryum.mnemonic import Mnemonic
 
@@ -2111,9 +2111,11 @@ class Commands(object):
         if change_addr is None:
             change_addr = self.wallet.get_least_used_address(for_change=True)
 
-        claim_id = decode_claim_id_hex(claim_id)
-        if len(claim_id) != 20:
+        try:
+            claim_id = decode_claim_id_hex(claim_id)
+        except InvalidClaimId:
             return {'success': False, 'reason': 'Invalid claim id'}
+
         amount = int(COIN * amount)
         if amount <= 0:
             return {'success': False, 'reason': 'Amount must be greater than 0'}

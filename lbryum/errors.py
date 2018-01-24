@@ -17,3 +17,7 @@ class InvalidProofError(Exception):
 
 class ChainValidationError(Exception):
     pass
+
+
+class InvalidClaimId(Exception):
+    pass
