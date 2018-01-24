@@ -39,7 +39,7 @@ labeled as 2.7.1. Subsequent releases will follow
   * Added `getcertificatesforsigning` command
   * Added `lock_wallet`, `decrypt_wallet`, and `update_passwords` functions and `locked` property to `Commands` class
   * Added OS keyring support for storing the wallet encryption password
-  *
+  * Added codecov.io reporting and updated README.rst with coverage badge.
 
 ### Removed
   * Removed `tiphistory`, `paytoandsend`, `paytomany`, and `paytomanyandsend` commands
