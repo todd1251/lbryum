@@ -2112,6 +2112,8 @@ class Commands(object):
             change_addr = self.wallet.get_least_used_address(for_change=True)
 
         claim_id = decode_claim_id_hex(claim_id)
+        if len(claim_id) != 20:
+            return {'success': False, 'reason': 'Invalid claim id'}
         amount = int(COIN * amount)
         if amount <= 0:
             return {'success': False, 'reason': 'Amount must be greater than 0'}
