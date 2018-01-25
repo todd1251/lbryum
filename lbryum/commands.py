@@ -951,6 +951,20 @@ class Commands(object):
             return True, certificate_claim['name']
         return False, None
 
+    @staticmethod
+    def _get_permanent_url(claim_result):
+        if claim_result.get('has_signature'):
+            return "{0}#{1}/{2}".format(
+                claim_result['channel_name'],
+                claim_result['value']['publisherSignature']['certificateId'],
+                claim_result['name']
+            )
+        else:
+            return "{0}#{1}".format(
+                claim_result['name'],
+                claim_result['claim_id']
+            )
+
     def parse_and_validate_claim_result(self, claim_result, certificate=None, raw=False):
         if not claim_result or 'value' not in claim_result:
             return claim_result
@@ -988,6 +1002,8 @@ class Commands(object):
 
         if 'amount' in claim_result and not isinstance(claim_result['amount'], float):
             claim_result = format_amount_value(claim_result)
+
+        claim_result['permanent_url'] = self._get_permanent_url(claim_result)
 
         return claim_result
 
@@ -1061,6 +1077,8 @@ class Commands(object):
 
         if 'amount' in claim_result and not isinstance(claim_result['amount'], float):
             claim_result = format_amount_value(claim_result)
+
+        claim_result['permanent_url'] = self._get_permanent_url(claim_result)
 
         return claim_result
 
