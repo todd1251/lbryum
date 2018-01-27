@@ -2644,7 +2644,7 @@ class Commands(object):
                     break
             if fee > txout_total:
                 return {'success': False, 'reason': 'transaction fee exceeds amount available'}
-            inputs.append(*spent_coins)
+            inputs.extend(spent_coins)
             return_value = txout_total - fee
         else:
             return_value = txout_value - fee

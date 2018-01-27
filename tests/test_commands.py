@@ -3,7 +3,6 @@ import unittest
 from lbryum import commands, wallet, transaction, bip32
 from lbryum.lbrycrd import claim_id_hash, encode_claim_id_hex, rev_hex
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
-from lbryum.errors import NotEnoughFunds
 
 
 PUBKEY = 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY4ZmQPQeW5CK6fiwx2EH6VxQab3zwDzZVWVApDSVNh'
@@ -153,26 +152,41 @@ class TestClaimCommand(unittest.TestCase):
 
 class TestAbandonCommand(unittest.TestCase):
 
-    def test_abandon_success(self):
-        cmds = MocCommands()
-        cmds.wallet.add_address_transaction(510000000)
-        tx = cmds.wallet.add_claim_transaction('test', 1)
+    def abandon_claim_with_name_value(self, name, satoshis, cmds=None):
+        cmds = cmds or MocCommands()
+        tx = cmds.wallet.add_claim_transaction(name, satoshis)
         claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
-        out = cmds.abandon(claim_id=claim_id)
+        return cmds.abandon(claim_id=claim_id)
+
+    def test_abandon_success(self):
+        out = self.abandon_claim_with_name_value('test', 10000)
         self.assertEqual(True, out['success'])
 
-    def test_abandoning_claim_with_fee_greater_than_claim_value(self):
+    def test_abandon_fails_for_tiny_claim(self):
+        out = self.abandon_claim_with_name_value('test', 1000)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('transaction fee exceeds amount available', out['reason'])
+
+    def test_abandon_fails_for_tiny_claim_and_not_enough_other_funds(self):
         cmds = MocCommands()
-        cmds.wallet.add_address_transaction(9500)
-        tx = cmds.wallet.add_claim_transaction('test', 1000)
-        claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
-        cmds.abandon(claim_id=claim_id)
+        cmds.wallet.add_address_transaction(500)
+        out = self.abandon_claim_with_name_value('test', 1000, cmds)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('transaction fee exceeds amount available', out['reason'])
+
+    def test_abandon_success_for_tiny_claim_with_enough_other_funds(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(4000)
+        cmds.wallet.add_address_transaction(5000)
+        out = self.abandon_claim_with_name_value('test', 1000, cmds)
+        self.assertEqual(True, out['success'])
         sent = cmds.wallet.sent_transactions[0]
-        self.assertEqual(len(sent._inputs), 2)
+        self.assertEqual(len(sent._inputs), 3)
         self.assertEqual(sent._inputs[0]['value'], 1000)
-        self.assertEqual(sent._inputs[1]['value'], 9500)
+        self.assertEqual(sent._inputs[1]['value'], 4000)
+        self.assertEqual(sent._inputs[2]['value'], 5000)
         self.assertEqual(len(sent._outputs), 1)
-        self.assertEqual(sent._outputs[0][2], 900)
+        self.assertEqual(sent._outputs[0][2], 400)
 
 
 class FormatTests(unittest.TestCase):
