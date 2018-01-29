@@ -30,7 +30,8 @@ labeled as 2.7.1. Subsequent releases will follow
   * Reworked `payto`, `paytoandsend`, `paytomany`, `paytomanyandsend` into single `payto` command
   * Tip information is now always returned in `claimhistory` command
   * Information about abandoned claim/update/support is now returned in `claimhistory` command
-  *
+  * Changed `offline_parse_and_validate_claim_result` and `parse_and_validate_claim_result` to include a permanent URL to claim and/or certificate.
+  * 
 
 ### Added
   * Added `getleastusedchangeaddress` command
