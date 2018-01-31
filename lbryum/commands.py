@@ -2640,6 +2640,7 @@ class Commands(object):
 
             # final transaction with correct change
             tx = Transaction.from_io(inputs, [(TYPE_ADDRESS, return_addr, change)])
+            self.wallet.sign_transaction(tx, self._password)
 
             if broadcast:
                 success, out = self.wallet.send_tx(tx)
