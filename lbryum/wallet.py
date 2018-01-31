@@ -690,7 +690,9 @@ class Abstract_Wallet(PrintError):
 
         address = txout_dest[1]
         utxos = self.get_addr_utxo(address)
-        if txid + ':' + str(nOut) not in utxos:
+        try:
+            utxo = utxos[txid + ':' + str(nOut)]
+        except KeyError:
             raise BaseException('this claimtrie transaction has already been spent')
 
         # create inputs
@@ -699,7 +701,7 @@ class Abstract_Wallet(PrintError):
         is_support = txout_type & TYPE_SUPPORT
 
         i = {'prevout_hash': txid, 'prevout_n': nOut, 'address': address, 'value': txout_value,
-             'is_update': is_update, 'is_claim': is_claim, 'is_support': is_support}
+             'is_update': is_update, 'is_claim': is_claim, 'is_support': is_support, 'height': utxo[0]}
         if is_claim:
             i['claim_name'] = txout_dest[0][0]
             i['claim_value'] = txout_dest[0][1]

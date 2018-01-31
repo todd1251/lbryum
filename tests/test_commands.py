@@ -21,6 +21,12 @@ class MocWallet(wallet.NewWallet):
         self.send_tx_connected = True
         self.send_tx_success = True
         self.sent_transactions = []
+        self.height = 0
+
+    @property
+    def next_height(self):
+        self.height += 1
+        return self.height
 
     def send_tx(self, tx, timeout=300):
         self.sent_transactions.append(tx)
@@ -33,6 +39,7 @@ class MocWallet(wallet.NewWallet):
         for txi in tx._inputs:
             if 'signatures' not in txi:
                 txi.update({
+                    'height': self.next_height,
                     'signatures': [None],
                     'pubkeys': ['02e61d176da16edd1d258a200ad9759ef63adf8e14cd97f53227bae35cdb84d2f6'],
                     'x_pubkeys': ['02e61d176da16edd1d258a200ad9759ef63adf8e14cd97f53227bae35cdb84d2f6']
@@ -58,7 +65,7 @@ class MocWallet(wallet.NewWallet):
             [{
                 'address': in_address,
                 'prevout_hash': '3140eb24b43386f35ba69e3875eb6c93130ac66201d01c58f598defc949a5c2a',
-                'prevout_n': 0
+                'prevout_n': 0,
             }],
             [
                 out_data
@@ -67,8 +74,9 @@ class MocWallet(wallet.NewWallet):
         self.sign_transaction(tx, '')
         tx.raw = tx.serialize()
         tx_hash = tx.hash()
+        tx_height = self.next_height
         self.history.setdefault(out_address, [])
-        self.history[out_address].append([tx.hash(), 1])
+        self.history[out_address].append([tx_hash, tx_height])
         self.txo[tx_hash] = {
             out_address: [(0, out_amount, False)]
         }
@@ -154,6 +162,7 @@ class TestAbandonCommand(unittest.TestCase):
 
     def abandon_claim_with_name_value(self, name, satoshis, cmds=None):
         cmds = cmds or MocCommands()
+        cmds.wallet.create_new_address(for_change=True)
         tx = cmds.wallet.add_claim_transaction(name, satoshis)
         claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
         return cmds.abandon(claim_id=claim_id)
@@ -176,17 +185,17 @@ class TestAbandonCommand(unittest.TestCase):
 
     def test_abandon_success_for_tiny_claim_with_enough_other_funds(self):
         cmds = MocCommands()
-        cmds.wallet.add_address_transaction(4000)
-        cmds.wallet.add_address_transaction(5000)
+        cmds.wallet.add_address_transaction(12000)
+        cmds.wallet.add_address_transaction(12000)
         out = self.abandon_claim_with_name_value('test', 1000, cmds)
         self.assertEqual(True, out['success'])
         sent = cmds.wallet.sent_transactions[0]
         self.assertEqual(len(sent._inputs), 3)
         self.assertEqual(sent._inputs[0]['value'], 1000)
-        self.assertEqual(sent._inputs[1]['value'], 4000)
-        self.assertEqual(sent._inputs[2]['value'], 5000)
+        self.assertEqual(sent._inputs[1]['value'], 12000)
+        self.assertEqual(sent._inputs[2]['value'], 12000)
         self.assertEqual(len(sent._outputs), 1)
-        self.assertEqual(sent._outputs[0][2], 400)
+        self.assertEqual(sent._outputs[0][2], 600)
 
 
 class FormatTests(unittest.TestCase):
