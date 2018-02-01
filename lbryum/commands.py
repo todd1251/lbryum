@@ -32,7 +32,7 @@ from lbryum.base import base_decode
 from lbryum.transaction import Transaction
 from lbryum.transaction import decode_claim_script, deserialize as deserialize_transaction
 from lbryum.transaction import get_address_from_output_script, script_GetOp
-from lbryum.errors import InvalidProofError, NotEnoughFunds
+from lbryum.errors import InvalidProofError, NotEnoughFunds, InvalidClaimId
 from lbryum.util import format_satoshis, rev_hex
 from lbryum.mnemonic import Mnemonic
 
@@ -1825,7 +1825,7 @@ class Commands(object):
                 result.append(cert_claim)
         return result
 
-    def _calculate_fee(self, inputs, outputs, set_tx_fee):
+    def _calculate_fee(self, inputs, outputs, set_tx_fee=None):
         if set_tx_fee is not None:
             return set_tx_fee
         dummy_tx = Transaction.from_io(inputs, outputs)
@@ -2129,7 +2129,11 @@ class Commands(object):
         if change_addr is None:
             change_addr = self.wallet.get_least_used_address(for_change=True)
 
-        claim_id = decode_claim_id_hex(claim_id)
+        try:
+            claim_id = decode_claim_id_hex(claim_id)
+        except InvalidClaimId:
+            return {'success': False, 'reason': 'Invalid claim id'}
+
         amount = int(COIN * amount)
         if amount <= 0:
             return {'success': False, 'reason': 'Amount must be greater than 0'}
@@ -2611,16 +2615,17 @@ class Commands(object):
         return {'success':True, 'outputs':outputs, 'inputs':inputs}
 
     @command('wpn')
-    def abandon(self, claim_id=None, txid=None, nout=None, broadcast=True, return_addr=None,
-                tx_fee=None):
+    def abandon(self, claim_id=None, txid=None, nout=None, broadcast=True, return_addr=None):
         """
         Abandon a name claim
 
         Either specify the claim with a claim_id or with txid and nout
         """
-        claims = self.getnameclaims(raw=True, include_abandoned=False, include_supports=True,
-                                    claim_id=claim_id, txid=txid, nout=nout,
-                                    skip_validate_signatures=True)
+        claims = self.getnameclaims(
+            raw=True, claim_id=claim_id, txid=txid, nout=nout,
+            skip_validate_signatures=True
+        )
+
         if len(claims) > 1:
             return {"success": False, 'reason': 'more than one claim that matches'}
         elif len(claims) == 0:
@@ -2628,38 +2633,54 @@ class Commands(object):
         else:
             claim = claims[0]
 
-        txid, nout = claim['txid'], claim['nout']
+        try:
+            claim_tx = self.wallet.get_spendable_claimtrietx_coin(claim['txid'], claim['nout'])
+        except BaseException as err:
+            return {
+                "success": False,
+                "reason": "failed to find claim utxo (%s)" % err.message
+            }
+
         if return_addr is None:
             return_addr = self.wallet.get_least_used_address()
-        if tx_fee is not None:
-            tx_fee = int(COIN * tx_fee)
-            if tx_fee < 0:
-                return {'success': False, 'reason': 'tx_fee must be greater than or equal to 0'}
 
-        i = self.wallet.get_spendable_claimtrietx_coin(txid, nout)
-        inputs = [i]
-        txout_value = i['value']
-        # create outputs
-        outputs = [(TYPE_ADDRESS, return_addr, txout_value)]
-        # fee will be roughly 10,000 deweys (0.0001 lbc), standard abandon should be about 200 bytes
-        # this is assuming config is not set to dynamic, which in case it will get fees from
-        # lbrycrd's fee estimation algorithm
+        inputs = []
+        spendable = [claim_tx]
+        for spendable_coin in self.wallet.get_spendable_coins():
+            self.wallet.add_input_info(spendable_coin)
+            spendable.append(spendable_coin)
 
-        fee = self._calculate_fee(inputs, outputs, tx_fee)
-        if fee > txout_value:
-            return {'success': False, 'reason': 'transaction fee exceeds amount to abandon'}
-        return_value = txout_value - fee
+        while spendable:
 
-        # create transaction
-        outputs = [(TYPE_ADDRESS, return_addr, return_value)]
-        tx = Transaction.from_io(inputs, outputs)
-        self.wallet.sign_transaction(tx, self._password)
-        if broadcast:
-            success, out = self.wallet.send_tx(tx)
-            if not success:
-                return {'success': False, 'reason': out}
-        return {'success': True, 'txid': tx.hash(), 'tx': str(tx),
-                'fee': str(Decimal(tx.get_fee()) / COIN)}
+            inputs.append(spendable.pop(0))
+
+            tx = Transaction.from_io(inputs, [(TYPE_ADDRESS, return_addr, 0)])
+            fee = tx.estimated_fee(self.wallet.relayfee(), self.wallet.fee_per_kb(self.config))
+
+            change = tx.input_value() - fee
+            if change < 0:
+                # input doesn't cover the fee, add more inputs
+                continue
+
+            # final transaction with correct change
+            tx = Transaction.from_io(inputs, [(TYPE_ADDRESS, return_addr, change)])
+            self.wallet.sign_transaction(tx, self._password)
+
+            if broadcast:
+                success, out = self.wallet.send_tx(tx)
+                if not success:
+                    return {'success': False, 'reason': out}
+
+            return {
+                'success': True,
+                'txid': tx.hash(),
+                'tx': str(tx),
+                'fee': str(Decimal(tx.get_fee()) / COIN)
+            }
+
+        # ran out of spendables before 'change' could be greater than 0
+        return {'success': False, 'reason': 'transaction fee exceeds amount available'}
+
 
 
 param_descriptions = {
