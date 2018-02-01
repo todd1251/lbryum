@@ -16,7 +16,8 @@ from lbryum import msqr
 from lbryum.base import base_decode, base_encode, EncodeBase58Check, DecodeBase58Check, __b58chars
 from lbryum.util import print_error, rev_hex, var_int, int_to_hex
 from lbryum.hashing import Hash, sha256, hash_160
-from lbryum.errors import InvalidPassword
+from lbryum.errors import InvalidPassword, InvalidClaimId
+from lbryum.constants import CLAIM_ID_SIZE
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +40,10 @@ def claim_id_hash(txid, n):
 
 # deocde a claim_id hex string
 def decode_claim_id_hex(claim_id_hex):
-    return rev_hex(claim_id_hex).decode('hex')
+    claim_id = rev_hex(claim_id_hex).decode('hex')
+    if len(claim_id) != CLAIM_ID_SIZE:
+        raise InvalidClaimId()
+    return claim_id
 
 
 # encode claim id bytes into hex string

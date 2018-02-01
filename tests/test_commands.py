@@ -1,42 +1,87 @@
 import unittest
 
-from lbryum import commands
-from lbryum.errors import NotEnoughFunds
+from lbryum import commands, wallet, transaction, bip32
+from lbryum.lbrycrd import claim_id_hash, encode_claim_id_hex, rev_hex
+from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
 
 
-class MocWallet(object):
-    def get_spendable_coins(self):
-        out = [{'is_support': False,
-                'prevout_hash': u'a3900bede6252a9c844987bc9c4c1d901611fc831d03c8239ca9c31961cd5105',
-                'is_update': False, 'address': 'bNy6H2ZioUPxhpcbUAjcJ24XCqBBQicizD',
-                'coinbase': False, 'height': 77872, 'is_claim': False, 'value': 600,
-                'prevout_n': 1}]
-        return out
+PUBKEY = 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY4ZmQPQeW5CK6fiwx2EH6VxQab3zwDzZVWVApDSVNh'
 
-    def get_spendable_claimtrietx_coin(self, txid, nout):
-        out = {'x_pubkeys': [
-            'ff0488b21e000000000000000000b0d157dd75c32e0ffeb037e52a27177b597d4cc547b4643e7fb377b2d79b078f0238609014cf243c8cdf7c1b24d0d9f7db295fed6e16e5088cc76069e1852ff20300003104'],
-               'signatures': [None],
-               'prevout_hash': '13a78af0e3f29e04e416ac47bd4196a2a476bdc1cf05b4be476ace2ab5de942b',
-               'is_update': 0, 'claim_value': 'test', 'claim_name': 'testpub12-14-2016-1320',
-               'redeemPubkey': u'037ab1ba72039546e640317961ed7bdaa062502d4ba3fb036ba0c2e0b24d1b1669',
-               'value': 1000, 'is_support': 0, 'address': 'bHU9jNvYABJhY93xDXDqT2bFzAs31QMWiL',
-               'num_sig': 1,
-               'pubkeys': [u'037ab1ba72039546e640317961ed7bdaa062502d4ba3fb036ba0c2e0b24d1b1669'],
-               'is_claim': 8, 'prevout_n': 0}
-        return out
 
-    def make_unsigned_transaction(self, coins, outputs, config, tx_fee, change_addr):
-        raise NotEnoughFunds()
+class MocStore(dict):
+    def put(self, key, val):
+        self[key] = val
 
-    def get_name_claims(self, domain=None, include_abandoned=True, include_supports=True):
-        return []
 
-    def create_new_address(self, **kwargs):
-        return "bScaWvgzAzFXzAcVgDDARfo9RFhdrm4pVc"
+class MocWallet(wallet.NewWallet):
 
-    def get_least_used_address(self, account=None, for_change=False):
-        return self.create_new_address()
+    def __init__(self):
+        super(MocWallet, self).__init__(MocStore())
+        self.accounts = {'0': bip32.BIP32_Account({'xpub': PUBKEY})}
+        self.send_tx_connected = True
+        self.send_tx_success = True
+        self.sent_transactions = []
+        self.height = 0
+
+    @property
+    def next_height(self):
+        self.height += 1
+        return self.height
+
+    def send_tx(self, tx, timeout=300):
+        self.sent_transactions.append(tx)
+        if not self.send_tx_connected:
+            raise Exception("Not connected.")
+        tx.raw = tx.serialize()
+        return self.send_tx_success, tx.raw
+
+    def sign_transaction(self, tx, password):
+        for txi in tx._inputs:
+            if 'signatures' not in txi:
+                txi.update({
+                    'height': self.next_height,
+                    'signatures': [None],
+                    'pubkeys': ['02e61d176da16edd1d258a200ad9759ef63adf8e14cd97f53227bae35cdb84d2f6'],
+                    'x_pubkeys': ['02e61d176da16edd1d258a200ad9759ef63adf8e14cd97f53227bae35cdb84d2f6']
+                })
+
+    def add_address_transaction(self, amount):
+        out_address = self.create_new_address()
+        return self._add_transaction(
+            out_address, amount,
+            (TYPE_ADDRESS, out_address, amount)
+        )
+
+    def add_claim_transaction(self, name, amount):
+        out_address = self.create_new_address()
+        return self._add_transaction(
+            out_address, amount,
+            (TYPE_CLAIM | TYPE_SCRIPT, ((name, ''), out_address), amount)
+        )
+
+    def _add_transaction(self, out_address, out_amount, out_data):
+        in_address = self.create_new_address()
+        tx = transaction.Transaction.from_io(
+            [{
+                'address': in_address,
+                'prevout_hash': '3140eb24b43386f35ba69e3875eb6c93130ac66201d01c58f598defc949a5c2a',
+                'prevout_n': 0,
+            }],
+            [
+                out_data
+            ]
+        )
+        self.sign_transaction(tx, '')
+        tx.raw = tx.serialize()
+        tx_hash = tx.hash()
+        tx_height = self.next_height
+        self.history.setdefault(out_address, [])
+        self.history[out_address].append([tx_hash, tx_height])
+        self.txo[tx_hash] = {
+            out_address: [(0, out_amount, False)]
+        }
+        self.transactions[tx_hash] = tx
+        return tx_hash
 
 
 class MocNetwork(object):
@@ -44,31 +89,116 @@ class MocNetwork(object):
 
 
 class MocCommands(commands.Commands):
-    def __init__(self, wallet, network):
-        self.wallet = wallet
-        self.network = network
-        self.config = {}
+    def __init__(self, config=None, wallet=None, network=None):
+        self.config = config or {}
+        self.wallet = wallet or MocWallet()
+        self.network = network or MocNetwork()
+        self._password = ''
 
 
-class Test_Commands(unittest.TestCase):
-    # test that NotEnoughFunds exceptions are caught in claim commands
-    def test_claim_not_enough_funds(self):
-        network = MocNetwork()
-        wallet = MocWallet()
-        cmds = MocCommands(wallet, network)
+class TestClaimCommand(unittest.TestCase):
 
+    def test_claim_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(110000000)
         out = cmds.claim('test', 'value', 1, skip_validate_schema=True, raw=True)
+        self.assertEqual(True, out['success'])
+
+    def test_claim_not_enough_funds(self):
+        cmds = MocCommands()
+        out = cmds.claim('test', '[payload]', 1, skip_validate_schema=True, raw=True)
         self.assertEqual(False, out['success'])
         self.assertEqual('Not enough funds', out['reason'])
 
-        out = cmds.update('test', 'test', amount=1, tx_fee=1, skip_validate_schema=True, raw=True)
+    def test_update_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        cmds.wallet.add_claim_transaction('test', 1)
+        out = cmds.update('test', '[payload]', amount=1, tx_fee=1, skip_validate_schema=True, raw=True)
+        self.assertEqual(True, out['success'])
+
+    def test_update_not_enough_funds(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(110000000)
+        cmds.wallet.add_claim_transaction('test', 1)
+        out = cmds.update('test', '[payload]', amount=1, tx_fee=1, skip_validate_schema=True, raw=True)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('Not enough funds', out['reason'])
+
+    def test_update_not_found(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        cmds.wallet.add_claim_transaction('test', 1)
+        out = cmds.update('foo', '[payload]', amount=1, tx_fee=1, skip_validate_schema=True, raw=True)
         self.assertEqual(False, out['success'])
         self.assertEqual('No claim to update', out['reason'])
 
-        out = cmds.support('test', 'd13d485b18f0b7a8ed2482e8f44b533e47948ded', 1, claim_addr='',
-                           change_addr='', tx_fee=1)
+    def test_support_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        tx = cmds.wallet.add_claim_transaction('test', 1)
+        claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
+        out = cmds.support('test', claim_id, 1, tx_fee=1)
+        self.assertEqual(True, out['success'])
+
+    def test_support_invalid_claim_id(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(10000000)
+        out = cmds.support('test', 'deadbeef', 1, tx_fee=1)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('Invalid claim id', out['reason'])
+
+    def test_support_not_enough_funds(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(10000000)
+        tx = cmds.wallet.add_claim_transaction('test', 1)
+        claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
+        out = cmds.support('test', claim_id, 1, tx_fee=1)
         self.assertEqual(False, out['success'])
         self.assertEqual('Not enough funds', out['reason'])
+
+
+class TestAbandonCommand(unittest.TestCase):
+
+    def abandon_claim_with_name_value(self, name, satoshis, cmds=None):
+        cmds = cmds or MocCommands()
+        cmds.wallet.create_new_address(for_change=True)
+        tx = cmds.wallet.add_claim_transaction(name, satoshis)
+        claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
+        return cmds.abandon(claim_id=claim_id)
+
+    def test_abandon_success(self):
+        out = self.abandon_claim_with_name_value('test', 10000)
+        self.assertEqual(True, out['success'])
+
+    def test_abandon_fails_for_tiny_claim(self):
+        out = self.abandon_claim_with_name_value('test', 1000)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('transaction fee exceeds amount available', out['reason'])
+
+    def test_abandon_fails_for_tiny_claim_and_not_enough_other_funds(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(500)
+        out = self.abandon_claim_with_name_value('test', 1000, cmds)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('transaction fee exceeds amount available', out['reason'])
+
+    def test_abandon_success_for_tiny_claim_with_enough_other_funds(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(12000)
+        cmds.wallet.add_address_transaction(12000)
+        out = self.abandon_claim_with_name_value('test', 1000, cmds)
+        self.assertEqual(True, out['success'])
+        sent = cmds.wallet.sent_transactions[0]
+        self.assertEqual(len(sent._inputs), 3)
+        self.assertEqual(sent._inputs[0]['value'], 1000)
+        self.assertEqual(sent._inputs[1]['value'], 12000)
+        self.assertEqual(sent._inputs[2]['value'], 12000)
+        self.assertEqual(len(sent._outputs), 1)
+        self.assertEqual(sent._outputs[0][2], 600)
+
+
+class FormatTests(unittest.TestCase):
 
     def test_format_lbrycrd_keys(self):
         a = {'amount': 100000000}
