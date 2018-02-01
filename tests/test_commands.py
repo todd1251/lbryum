@@ -2,6 +2,7 @@ import unittest
 
 from lbryum import commands, wallet, transaction, bip32
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
+from test_data import SAMPLE_CLAIMS_FOR_NAME_RESULT
 
 
 PUBKEY = 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY4ZmQPQeW5CK6fiwx2EH6VxQab3zwDzZVWVApDSVNh'
@@ -84,7 +85,12 @@ class MocWallet(wallet.NewWallet):
 
 
 class MocNetwork(object):
-    pass
+
+    def __init__(self, responses=None):
+        self.responses = responses or {}
+
+    def synchronous_get(self, request, timeout=30):
+        return self.responses[request[0]](request[1])
 
 
 class MocCommands(commands.Commands):
@@ -93,6 +99,97 @@ class MocCommands(commands.Commands):
         self.wallet = wallet or MocWallet()
         self.network = network or MocNetwork()
         self._password = ''
+
+
+class TestCommandsCommand(unittest.TestCase):
+
+    def test_commands(self):
+        cmds = MocCommands()
+        self.assertEqual(
+            94, len(cmds.commands().split())
+        )
+
+
+class TestGetBalanceCommand(unittest.TestCase):
+
+    def test_getbalance_no_transactions(self):
+        cmds = MocCommands()
+        self.assertEqual({'confirmed': '0'}, cmds.getbalance())
+
+    def test_getbalance(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(1000123000)
+        cmds.wallet.add_claim_transaction('test', 5000123000)
+        self.assertEqual({'confirmed': '60.00246'}, cmds.getbalance())
+
+
+class TestGetBlockCommand(unittest.TestCase):
+
+    def test_getblock(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.block.get_block': lambda arg: {'arg': arg}
+        })
+        self.assertEqual({'arg': ['the hash']}, cmds.getblock('the hash'))
+
+
+class TestGetTransactionCommand(unittest.TestCase):
+
+    def test_gettransaction_local(self):
+        cmds = MocCommands()
+        tx = cmds.wallet.add_address_transaction(1)
+        self.assertEqual(
+            {'inputs', 'lockTime', 'outputs', 'version'},
+            set(cmds.gettransaction(tx.hash()))
+        )
+
+    def test_gettransaction_network(self):
+        tx = transaction.Transaction.from_io([], [])
+        tx.raw = tx.serialize()
+        tx_hash = tx.hash()
+        cmds = MocCommands()
+        cmds.wallet = None
+        cmds.network = MocNetwork({
+            'blockchain.transaction.get': lambda _: tx.raw
+        })
+        self.assertEqual(
+            {'inputs': [], 'lockTime': 0, 'outputs': [], 'version': 1},
+            cmds.gettransaction(tx_hash)
+        )
+
+
+class TestGetNameClaimsCommand(unittest.TestCase):
+
+    def test_getnameclaims_no_claims(self):
+        cmds = MocCommands()
+        self.assertEqual([], cmds.getnameclaims())
+
+    def test_getnameclaims_with_result(self):
+        cmds = MocCommands()
+        cmds.wallet.add_claim_transaction('test1', 1000123000)
+        cmds.wallet.add_claim_transaction('test2', 5000123000)
+        self.assertEqual(
+            ['test1', 'test2'],
+            [c['name'] for c in cmds.getnameclaims()]
+        )
+
+
+class TestGetClaimsForNameCommand(unittest.TestCase):
+
+    def test_getclaimsforname_no_claims(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimsforname': lambda _: {'claims': []}
+        })
+        self.assertEqual({'claims': []}, cmds.getclaimsforname('test'))
+
+    def test_getclaimsforname(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimsforname': lambda _: SAMPLE_CLAIMS_FOR_NAME_RESULT,
+            'blockchain.claimtrie.getclaimbyid': lambda _: None
+        })
+        self.assertEqual(9, len(cmds.getclaimsforname('test')['claims']))
 
 
 class TestClaimCommand(unittest.TestCase):
