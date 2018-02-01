@@ -27,13 +27,13 @@ from lbryum.hashing import Hash, hash_160, hash_encode
 from lbryum.claims import verify_proof
 from lbryum.lbrycrd import hash_160_to_bc_address, is_address, decode_claim_id_hex
 from lbryum.lbrycrd import encode_claim_id_hex, encrypt_message, public_key_from_private_key
-from lbryum.lbrycrd import claim_id_hash, verify_message
+from lbryum.lbrycrd import verify_message
 from lbryum.base import base_decode
 from lbryum.transaction import Transaction
 from lbryum.transaction import decode_claim_script, deserialize as deserialize_transaction
 from lbryum.transaction import get_address_from_output_script, script_GetOp
 from lbryum.errors import InvalidProofError, NotEnoughFunds, InvalidClaimId
-from lbryum.util import format_satoshis, rev_hex
+from lbryum.util import format_satoshis
 from lbryum.mnemonic import Mnemonic
 
 
@@ -672,8 +672,7 @@ class Commands(object):
             tx_out = tx_outs[nout]
             if tx_out[0] & TYPE_CLAIM:
                 claim_name, claim_value = tx_out[1][0]
-                claim_id = claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout)
-                claim_id = encode_claim_id_hex(claim_id)
+                claim_id = tx.get_claim_id(nout)
                 claim_addr = tx_out[1][1]
             elif tx_out[0] & TYPE_UPDATE:
                 claim_name, claim_id, claim_value = tx_out[1][0]
@@ -1952,14 +1951,13 @@ class Commands(object):
             if output[0] & TYPE_CLAIM:
                 nout = i
         assert nout is not None
-        claimid = encode_claim_id_hex(claim_id_hash(rev_hex(tx.hash()).decode('hex'), nout))
         return {
             "success": True,
             "txid": tx.hash(),
             "nout": nout,
             "tx": str(tx),
             "fee": str(Decimal(tx.get_fee()) / COIN),
-            "claim_id": claimid,
+            "claim_id": tx.get_claim_id(nout)
             "value": val.encode('hex'),
             "claim_address": claim_addr
         }

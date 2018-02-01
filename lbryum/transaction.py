@@ -12,7 +12,8 @@ from lbryum.hashing import Hash, hash_160, hash_encode
 from lbryum.lbrycrd import hash_160_to_bc_address, bc_address_to_hash_160, op_push
 from lbryum.lbrycrd import address_from_private_key, point_to_ser, MyVerifyingKey, MySigningKey
 from lbryum.lbrycrd import public_key_to_bc_address, regenerate_key, public_key_from_private_key
-from lbryum.util import print_error, profiler, var_int, int_to_hex, parse_sig
+from lbryum.lbrycrd import encode_claim_id_hex, claim_id_hash
+from lbryum.util import print_error, profiler, var_int, int_to_hex, parse_sig, rev_hex
 
 log = logging.getLogger()
 
@@ -548,6 +549,10 @@ class Transaction(object):
 
     def hash(self):
         return Hash(self.raw.decode('hex'))[::-1].encode('hex')
+
+    def get_claim_id(self, nout):
+        tx_hash = rev_hex(self.hash()).decode('hex')
+        return encode_claim_id_hex(claim_id_hash(tx_hash, nout))
 
     def add_inputs(self, inputs):
         self._inputs.extend(inputs)

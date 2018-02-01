@@ -1,7 +1,6 @@
 import unittest
 
 from lbryum import commands, wallet, transaction, bip32
-from lbryum.lbrycrd import claim_id_hash, encode_claim_id_hex, rev_hex
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
 
 
@@ -81,7 +80,7 @@ class MocWallet(wallet.NewWallet):
             out_address: [(0, out_amount, False)]
         }
         self.transactions[tx_hash] = tx
-        return tx_hash
+        return tx
 
 
 class MocNetwork(object):
@@ -110,6 +109,9 @@ class TestClaimCommand(unittest.TestCase):
         self.assertEqual(False, out['success'])
         self.assertEqual('Not enough funds', out['reason'])
 
+
+class TestUpdateCommand(unittest.TestCase):
+
     def test_update_success(self):
         cmds = MocCommands()
         cmds.wallet.add_address_transaction(510000000)
@@ -133,12 +135,14 @@ class TestClaimCommand(unittest.TestCase):
         self.assertEqual(False, out['success'])
         self.assertEqual('No claim to update', out['reason'])
 
+
+class TestSupportCommand(unittest.TestCase):
+
     def test_support_success(self):
         cmds = MocCommands()
         cmds.wallet.add_address_transaction(510000000)
         tx = cmds.wallet.add_claim_transaction('test', 1)
-        claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
-        out = cmds.support('test', claim_id, 1, tx_fee=1)
+        out = cmds.support('test', tx.get_claim_id(0), 1, tx_fee=1)
         self.assertEqual(True, out['success'])
 
     def test_support_invalid_claim_id(self):
@@ -152,8 +156,7 @@ class TestClaimCommand(unittest.TestCase):
         cmds = MocCommands()
         cmds.wallet.add_address_transaction(10000000)
         tx = cmds.wallet.add_claim_transaction('test', 1)
-        claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
-        out = cmds.support('test', claim_id, 1, tx_fee=1)
+        out = cmds.support('test', tx.get_claim_id(0), 1, tx_fee=1)
         self.assertEqual(False, out['success'])
         self.assertEqual('Not enough funds', out['reason'])
 
@@ -164,8 +167,7 @@ class TestAbandonCommand(unittest.TestCase):
         cmds = cmds or MocCommands()
         cmds.wallet.create_new_address(for_change=True)
         tx = cmds.wallet.add_claim_transaction(name, satoshis)
-        claim_id = encode_claim_id_hex(claim_id_hash(rev_hex(tx).decode('hex'), 0))
-        return cmds.abandon(claim_id=claim_id)
+        return cmds.abandon(claim_id=tx.get_claim_id(0))
 
     def test_abandon_success(self):
         out = self.abandon_claim_with_name_value('test', 10000)
