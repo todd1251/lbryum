@@ -2633,7 +2633,13 @@ class Commands(object):
         else:
             claim = claims[0]
 
-        claim_tx = self.wallet.get_spendable_claimtrietx_coin(claim['txid'], claim['nout'])
+        try:
+            claim_tx = self.wallet.get_spendable_claimtrietx_coin(claim['txid'], claim['nout'])
+        except BaseException as err:
+            return {
+                "success": False,
+                "reason": "failed to find claim utxo (%s)" % err.message
+            }
 
         if return_addr is None:
             return_addr = self.wallet.get_least_used_address()
