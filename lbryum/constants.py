@@ -42,7 +42,7 @@ blockchain_params = {
         'genesis_bits': 0x1f00ffff,
         'target_timespan': 150
     },
-    'lbrycrd_test': {
+    'lbrycrd_testnet': {
         'pubkey_address': 0,
         'script_address': 5,
         'pubkey_address_prefix': 111,

@@ -1,8 +1,8 @@
 import unittest
 
-from lbryum import commands, wallet, transaction, bip32
+from lbryum import commands, wallet, transaction, bip32, network, blockchain, lbrycrd
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
-from test_data import SAMPLE_CLAIMS_FOR_NAME_RESULT
+from test_data import SAMPLE_CLAIMS_FOR_NAME_RESULT, SAMPLE_CLAIMTRIE_GETVALUE_RESULT
 
 
 PUBKEY = 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY4ZmQPQeW5CK6fiwx2EH6VxQab3zwDzZVWVApDSVNh'
@@ -84,13 +84,40 @@ class MocWallet(wallet.NewWallet):
         return tx
 
 
-class MocNetwork(object):
+class MocBlockchain(blockchain.LbryCrd):
+
+    def __init__(self, config, network):
+        chain = self.BLOCKCHAIN_NAME
+        params = blockchain.blockchain_params
+        script_address = params[chain]['script_address']
+        script_address_prefix = params[chain]['script_address_prefix']
+        pubkey_address = params[chain]['pubkey_address']
+        pubkey_address_prefix = params[chain]['pubkey_address_prefix']
+        lbrycrd.SCRIPT_ADDRESS = (script_address, script_address_prefix)
+        lbrycrd.PUBKEY_ADDRESS = (pubkey_address, pubkey_address_prefix)
+        super(MocBlockchain, self).__init__(config, network)
+        self.respond_with_header = None
+
+    def read_header(self, block_height):
+        return self.respond_with_header
+
+
+class MocNetwork(network.Network):
 
     def __init__(self, responses=None):
         self.responses = responses or {}
+        self.config = network.SimpleConfig({
+            'lbryum_path': '.',
+            'chain': 'lbrycrd_main'
+        })
+        self.default_server = 'lbry.io:50001:t'
+        self.heights = {self.default_server: 1}
+        self.blockchain = MocBlockchain(self.config, self)
 
-    def synchronous_get(self, request, timeout=30):
-        return self.responses[request[0]](request[1])
+    def send(self, request, callback):
+        assert len(request) == 1, 'Mock network only supports one request at a time.'
+        request = request[0]
+        callback({'result': self.responses[request[0]](request[1])})
 
 
 class MocCommands(commands.Commands):
@@ -106,7 +133,7 @@ class TestCommandsCommand(unittest.TestCase):
     def test_commands(self):
         cmds = MocCommands()
         self.assertEqual(
-            94, len(cmds.commands().split())
+            95, len(cmds.commands().split())
         )
 
 
@@ -190,6 +217,43 @@ class TestGetClaimsForNameCommand(unittest.TestCase):
             'blockchain.claimtrie.getclaimbyid': lambda _: None
         })
         self.assertEqual(9, len(cmds.getclaimsforname('test')['claims']))
+
+
+class TestGetValueForNameCommand(unittest.TestCase):
+
+    def setUp(self):
+        self.cmds = MocCommands()
+        self.cmds.network.default_server = 'lbryum8.lbry.io:50001:t'
+        self.cmds.network.blockchain.local_height = 316209
+        self.cmds.network.heights = {
+            self.cmds.network.default_server: self.cmds.network.blockchain.local_height
+        }
+        self.cmds.network.blockchain.respond_with_header = {
+            'nonce': 3669616010,
+            'prev_block_hash': '2861f2474292fdad2e3e57bb07d59afd42eb3b17c96fa387ba31af09c6cd5220',
+            'timestamp': 1517698627,
+            'merkle_root': 'cee32cc073fb0f62ce78ef14d0cd5de852d3e9e6af1c4f748bf402a34dfb05f2',
+            'claim_trie_root': '7e0e07df79b4eb7a3d1235ef03fb6a0bd2a581de8a33f570a9bffedb3afc3923',
+            'version': 536870912,
+            'bits': 436557565
+        }
+
+    def test_getvalueforname_no_value(self):
+        self.cmds.network.responses = {
+            'blockchain.claimtrie.getvalue': lambda _: {}
+        }
+        self.assertEqual({'error': 'proof not in result'}, self.cmds.getvalueforname('five'))
+
+    def test_getvalueforname(self):
+        self.cmds.network.responses = {
+            'blockchain.claimtrie.getvalue': lambda _: SAMPLE_CLAIMTRIE_GETVALUE_RESULT
+        }
+        self.assertEqual(
+            {'address', 'amount', 'claim_id', 'claim_sequence', 'decoded_claim', 'depth',
+             'effective_amount', 'has_signature', 'height', 'name', 'nout',
+             'permanent_url', 'supports', 'txid', 'value'},
+            set(self.cmds.getvalueforname('five'))
+        )
 
 
 class TestClaimCommand(unittest.TestCase):

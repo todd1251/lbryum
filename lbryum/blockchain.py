@@ -309,7 +309,7 @@ def get_blockchain(config, network):
 
     if chain == 'lbrycrd_main':
         return LbryCrd(config, network)
-    elif chain == 'lbrycrd_test':
+    elif chain == 'lbrycrd_testnet':
         return LbryCrdTest(config, network)
     elif chain == 'lbrycrd_regtest':
         return LbryCrdReg(config, network)
