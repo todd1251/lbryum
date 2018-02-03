@@ -246,6 +246,12 @@ class Commands(object):
         return Mnemonic(language).check_seed(seed, entropy)
 
     @command('n')
+    def netapi(self, command, arg1=None, arg2=None, arg3=None):
+        """Test the network API"""
+        args = filter(None, [arg1, arg2, arg3])
+        return self.network.synchronous_get((command, args))
+
+    @command('n')
     def getaddresshistory(self, address):
         """Return the transaction history of any address. Note: This is a
         walletless server query, results are not checked by SPV.
@@ -2755,6 +2761,9 @@ command_options = {
     'claim_id': (None, "--claim_id", "claim id"),
     'txid': ("-t", "--txid", "txid"),
     'nout': ("-n", "--nout", "nout"),
+    'arg1': (None, "--arg1", "arg1"),
+    'arg2': (None, "--arg2", "arg2"),
+    'arg3': (None, "--arg3", "arg3"),
     'certificate_id': (None, "--certificate_id", "claim id of a certificate that can be used "
                                                  "for signing"),
     'skip_validate_schema': (None, "--ignore_schema", "Validate the claim conforms with lbry "
