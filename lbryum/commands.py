@@ -131,7 +131,7 @@ class Commands(object):
         elif self.wallet and self.wallet.use_encryption and password:
             self.unlock_wallet(password)
         elif self.wallet:
-            log.info("wallet password was not specified and there is no keyring available")
+            log.debug("wallet password was not specified and there is no keyring available")
 
         if self.wallet and self.wallet.use_encryption and new_password:
             self.update_password(new_password)
@@ -953,7 +953,7 @@ class Commands(object):
 
     @staticmethod
     def _get_permanent_url(claim_result):
-        if claim_result.get('has_signature'):
+        if claim_result.get('has_signature') and claim_result.get('channel_name'):
             return "{0}#{1}/{2}".format(
                 claim_result['channel_name'],
                 claim_result['value']['publisherSignature']['certificateId'],
@@ -1772,6 +1772,7 @@ class Commands(object):
                 claim, certificate=certificate, raw=raw, decoded_claim=decoded_claim,
                 decoded_certificate=certificate_obj,
                 skip_validate_signatures=skip_validate_signatures)
+
             name_claims.append(parsed)
 
         # format and add supports to claims for return
@@ -1815,9 +1816,10 @@ class Commands(object):
         certificate_claim_ids = self.wallet.get_certificate_claim_ids_for_signing()
         result = []
         for cert_claim in my_certs:
-            cert_claim['is_mine'] = True
-            result.append(cert_claim)
-            certificate_claim_ids.remove(cert_claim['claim_id'])
+            if cert_claim['claim_id'] in certificate_claim_ids:
+                cert_claim['is_mine'] = True
+                result.append(cert_claim)
+                certificate_claim_ids.remove(cert_claim['claim_id'])
         if certificate_claim_ids:
             imported_certs = self.getclaimsbyids(certificate_claim_ids, raw=raw)
             for claim_id, cert_claim in imported_certs.iteritems():
@@ -1956,7 +1958,9 @@ class Commands(object):
             "nout": nout,
             "tx": str(tx),
             "fee": str(Decimal(tx.get_fee()) / COIN),
-            "claim_id": claimid
+            "claim_id": claimid,
+            "value": val.encode('hex'),
+            "claim_address": claim_addr
         }
 
     @command('wpn')
@@ -2449,7 +2453,9 @@ class Commands(object):
             "tx": str(tx),
             "fee": str(Decimal(tx.get_fee()) / COIN),
             "amount": str(Decimal(amount) / COIN),
-            "claim_id": claim_id
+            "claim_id": claim_id,
+            "value": val.encode('hex'),
+            "claim_address": claim_addr
         }
 
     def _get_input_output_for_updates(self, name, val, amount, claim_id, txid, nout,
