@@ -1,5 +1,6 @@
-from time import sleep
 import unittest
+import time
+from collections import OrderedDict
 
 from lbryum import commands, wallet, transaction, bip32, network, blockchain, lbrycrd
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
@@ -24,11 +25,16 @@ class MocWallet(wallet.NewWallet):
         self.send_tx_success = True
         self.sent_transactions = []
         self.height = 0
+        self.transactions = OrderedDict()
 
     @property
     def next_height(self):
         self.height += 1
         return self.height
+
+    @property
+    def last_transaction(self):
+        return next(reversed(self.transactions.values()))
 
     def send_tx(self, tx, timeout=300):
         self.sent_transactions.append(tx)
@@ -91,6 +97,12 @@ class MocWallet(wallet.NewWallet):
         }
         self.transactions[tx_hash] = tx
         return tx
+
+    def make_last_tx_verified(self):
+        tx = self.last_transaction
+        out_address = self.txo[tx.hash()].keys()[0]
+        height = self.history[out_address][0][1]
+        self.verified_tx[tx.hash()] = (height, time.time(), 0)
 
 
 class MocBlockchain(blockchain.LbryCrd):
@@ -370,15 +382,14 @@ class TestClaimHistoryCommand(unittest.TestCase):
     def test_claimhistory(self):
         cmds = MocCommands()
         cmds.wallet.add_address_transaction(510000000)
+        cmds.wallet.make_last_tx_verified()
         tx = cmds.wallet.add_claim_transaction('test', 310000000)
+        cmds.wallet.make_last_tx_verified()
         cmds.wallet.add_support_transaction(
             'test', 110000000, tx.get_claim_id(0), "bRcHraa8bYJZL7vkh5sNmGwPDERFUjGPP9"
         )
-        # TODO: figure out why the tx order returned by claimhistory() is different when
-        # run from PyCharm vs. with tox.
-        #self.assertEqual([5.1, 3.1, 1.1], [h['value'] for h in cmds.claimhistory()])
-        # for now just check we got right number of tx's
-        self.assertEqual(len(cmds.claimhistory()), 3)
+        cmds.wallet.make_last_tx_verified()
+        self.assertEqual([5.1, 3.1, 1.1], [h['value'] for h in cmds.claimhistory()])
 
 
 class TestClaimCommand(unittest.TestCase):
