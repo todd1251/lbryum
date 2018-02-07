@@ -2,10 +2,14 @@ import unittest
 import time
 from collections import OrderedDict
 
-from lbryum import commands, wallet, transaction, bip32, network, blockchain, lbrycrd
+from lbryschema.claim import ClaimDict
+from lbryschema.signer import SECP256k1
+
+from lbryum import commands, wallet, transaction, bip32, network, blockchain, lbrycrd, contacts
+from lbryum.errors import NotEnoughFunds
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
 from test_data import SAMPLE_CLAIMS_FOR_NAME_RESULT, SAMPLE_CLAIMTRIE_GETVALUE_RESULT,\
-    SAMPLE_CLAIMTRIE_GETVALUEFORURI_RESULT
+    SAMPLE_CLAIMTRIE_GETVALUEFORURI_RESULT, SECP256K1_PRIVATE_KEY
 
 
 PUBKEY = 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY4ZmQPQeW5CK6fiwx2EH6VxQab3zwDzZVWVApDSVNh'
@@ -14,6 +18,11 @@ PUBKEY = 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY
 class MocStore(dict):
     def put(self, key, val):
         self[key] = val
+
+
+class Contacts(contacts.Contacts):
+    def __init__(self):
+        pass
 
 
 class MocWallet(wallet.NewWallet):
@@ -60,11 +69,11 @@ class MocWallet(wallet.NewWallet):
             (TYPE_ADDRESS, out_address, amount)
         )
 
-    def add_claim_transaction(self, name, amount):
+    def add_claim_transaction(self, name, amount, value=''):
         out_address = self.create_new_address()
         return self._add_transaction(
             out_address, amount,
-            (TYPE_CLAIM | TYPE_SCRIPT, ((name, ''), out_address), amount)
+            (TYPE_CLAIM | TYPE_SCRIPT, ((name, value), out_address), amount)
         )
 
     def add_support_transaction(self, name, amount, claim_id, claim_addr):
@@ -102,7 +111,7 @@ class MocWallet(wallet.NewWallet):
         tx = self.last_transaction
         out_address = self.txo[tx.hash()].keys()[0]
         height = self.history[out_address][0][1]
-        self.verified_tx[tx.hash()] = (height, time.time(), 0)
+        self.verified_tx[tx.hash()] = (height, time.time(), 1)
 
 
 class MocBlockchain(blockchain.LbryCrd):
@@ -146,15 +155,89 @@ class MocCommands(commands.Commands):
         self.config = config or {}
         self.wallet = wallet or MocWallet()
         self.network = network or MocNetwork()
-        self._password = ''
+        self.contacts = Contacts()
+        self._password = None
 
 
-class TestCommandsCommand(unittest.TestCase):
+class TestUtilCommands(unittest.TestCase):
 
     def test_commands(self):
         cmds = MocCommands()
         self.assertEqual(
             95, len(cmds.commands().split())
+        )
+
+    def test_locked(self):
+        cmds = MocCommands()
+        self.assertEqual(False, cmds.locked)
+        cmds.wallet.use_encryption = True
+        self.assertEqual(True, cmds.locked)
+        cmds._password = 'foo'
+        self.assertEqual(False, cmds.locked)
+
+    @unittest.skip('todo: finish implementing')
+    def test_lock_unlock(self):
+        cmds = MocCommands()
+        self.assertEqual(False, cmds.locked)
+        cmds.wallet.use_encryption = True
+        cmds.lock_wallet()
+        self.assertEqual(True, cmds.locked)
+        cmds.wallet.master_private_keys['x/'] = SECP256K1_PRIVATE_KEY
+        cmds.wallet.master_public_keys['x/'] = SECP256K1_PRIVATE_KEY
+        cmds.unlock_wallet('foo')
+        self.assertEqual(False, cmds.locked)
+
+
+class TestImportExportCertificateInfoCommand(unittest.TestCase):
+
+    def _make_claim_tx_key(self, cmds):
+        claim = ClaimDict.generate_certificate(SECP256K1_PRIVATE_KEY, curve=SECP256k1)
+        cmds.wallet.add_address_transaction(4003002001000)
+        tx = cmds.wallet.add_claim_transaction('lbry://@test', 1000, claim.serialized)
+
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimsbyids': lambda _: {
+                tx.get_claim_id(0): cmds.wallet.get_name_claims()[0]
+            }
+        })
+        key = cmds._serialize_certificate_key(tx.get_claim_id(0), SECP256K1_PRIVATE_KEY)
+        return claim, tx, key
+
+    def test_importcertificateinfo_no_args(self):
+        self.assertEqual({}, MocCommands().importcertificateinfo())
+
+    def test_importcertificateinfo(self):
+        cmds = MocCommands()
+        claim, tx, key = self._make_claim_tx_key(cmds)
+        self.assertEqual(cmds.importcertificateinfo(key), {
+            '84cdc6092acaaffe7f704766a3b3c83e369cb65f': {'success': True}
+        })
+
+    def test_importcertificateinfo_already_exists(self):
+        cmds = MocCommands()
+        claim, tx, key = self._make_claim_tx_key(cmds)
+        cmds.wallet.save_certificate(tx.get_claim_id(0), SECP256K1_PRIVATE_KEY)
+        self.assertEqual(cmds.importcertificateinfo(key), {
+            '84cdc6092acaaffe7f704766a3b3c83e369cb65f': {
+                'error': 'refusing to overwrite certificate key already in the wallet',
+                'success': False
+            }
+        })
+
+    def test_exportcertificateinfo(self):
+        cmds = MocCommands()
+        claim, tx, key = self._make_claim_tx_key(cmds)
+        cmds.wallet.save_certificate(tx.get_claim_id(0), SECP256K1_PRIVATE_KEY)
+        self.assertEqual(
+            cmds.exportcertificateinfo(tx.get_claim_id(0)),
+            '84cdc6092acaaffe7f704766a3b3c83e369cb65f2d2d2d2d2d424547494e204543'
+            '2050524956415445204b45592d2d2d2d2d0a4d485143415145454950626a614566'
+            '434343793548487647486b457733582f64544a586c72346a63454a4856314f6d63'
+            '4244506d6f416347425375424241414b0a6f555144516741456c4c50726b564961'
+            '7076744b727630446b67516239764158744351444249752b69486c735143356478'
+            '315a6e4f575a7770594b51754d34690a4c4e6275546c667843485759776f76774c'
+            '6a596e616f3869776770306f673d3d0a2d2d2d2d2d454e442045432050524956415'
+            '445204b45592d2d2d2d2d0a'
         )
 
 
@@ -171,14 +254,21 @@ class TestGetBalanceCommand(unittest.TestCase):
         self.assertEqual({'confirmed': '60.00246'}, cmds.getbalance())
 
 
-class TestGetBlockCommand(unittest.TestCase):
+class TestPassthroughNetworkCommands(unittest.TestCase):
 
     def test_getblock(self):
         cmds = MocCommands()
         cmds.network = MocNetwork({
-            'blockchain.block.get_block': lambda arg: {'arg': arg}
+            'blockchain.block.get_block': lambda arg: arg
         })
-        self.assertEqual({'arg': ['the hash']}, cmds.getblock('the hash'))
+        self.assertEqual(['the hash'], cmds.getblock('the hash'))
+
+    def test_getclaimtrie(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.get': lambda _: 'CLAIM TRIE'
+        })
+        self.assertEqual('CLAIM TRIE', cmds.getclaimtrie())
 
 
 class TestGetTransactionCommand(unittest.TestCase):
@@ -238,6 +328,98 @@ class TestGetClaimsForNameCommand(unittest.TestCase):
             'blockchain.claimtrie.getclaimbyid': lambda _: None
         })
         self.assertEqual(9, len(cmds.getclaimsforname('test')['claims']))
+
+
+class TestGetClaimByIdCommand(unittest.TestCase):
+
+    def test_getclaimbyid_no_claims(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimbyid': lambda _: {}
+        })
+        self.assertEqual({}, cmds.getclaimbyid('test'))
+
+    def test_getclaimbyid(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimbyid': lambda _: SAMPLE_CLAIMS_FOR_NAME_RESULT
+        })
+        self.assertEqual(9, len(cmds.getclaimbyid('test')['claims']))
+
+
+class TestGetClaimByOutpointCommand(unittest.TestCase):
+
+    def test_getclaimbyoutpoint_no_claims(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimsintx': lambda _: []
+        })
+        self.assertEqual(
+            {'error': 'claim not found', 'outpoint': 'test:1', 'success': False},
+            cmds.getclaimbyoutpoint('test', 1)
+        )
+
+    def test_getclaimbyoutpoint(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimsintx': lambda _: SAMPLE_CLAIMS_FOR_NAME_RESULT['claims']
+        })
+        self.assertEqual(16, len(cmds.getclaimbyoutpoint('test', 1)))
+
+
+class TestGetClaimsFromTxCommand(unittest.TestCase):
+
+    def test_getclaimsfromtx_no_claims(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimsintx': lambda _: []
+        })
+        self.assertEqual([], cmds.getclaimsfromtx('test'))
+
+    def test_getclaimsfromtx(self):
+        cmds = MocCommands()
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimsintx': lambda _: SAMPLE_CLAIMS_FOR_NAME_RESULT['claims']
+        })
+        self.assertEqual(SAMPLE_CLAIMS_FOR_NAME_RESULT['claims'], cmds.getclaimsfromtx('test'))
+
+
+class TestGetCertificateClaimsCommand(unittest.TestCase):
+
+    def test_getcertificateclaims_empty(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(4003002001000)
+        cmds.wallet.add_claim_transaction('lbry://@test', 1000)
+        self.assertEqual([], cmds.getcertificateclaims())
+
+    def test_getcertificateclaims(self):
+        cmds = MocCommands()
+        claim = ClaimDict.generate_certificate(SECP256K1_PRIVATE_KEY, curve=SECP256k1)
+        cmds.wallet.add_address_transaction(4003002001000)
+        tx = cmds.wallet.add_claim_transaction('lbry://@test', 1000, claim.serialized)
+        cmds.wallet.save_certificate(tx.get_claim_id(0), SECP256K1_PRIVATE_KEY)
+        cmds.wallet.set_default_certificate(tx.get_claim_id(0))
+        self.assertEqual(1, len(cmds.getcertificateclaims()))
+        self.assertIn('certificate', cmds.getcertificateclaims()[0]['value'])
+
+
+class TestGetCertificatesForSigningCommand(unittest.TestCase):
+
+    def test_getcertificatesforsigning_empty(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(4003002001000)
+        cmds.wallet.add_claim_transaction('lbry://@test', 1000)
+        self.assertEqual([], cmds.getcertificatesforsigning())
+
+    def test_getcertificatesforsigning(self):
+        cmds = MocCommands()
+        claim = ClaimDict.generate_certificate(SECP256K1_PRIVATE_KEY, curve=SECP256k1)
+        cmds.wallet.add_address_transaction(4003002001000)
+        tx = cmds.wallet.add_claim_transaction('lbry://@test', 1000, claim.serialized)
+        cmds.wallet.save_certificate(tx.get_claim_id(0), SECP256K1_PRIVATE_KEY)
+        cmds.wallet.set_default_certificate(tx.get_claim_id(0))
+        self.assertEqual(1, len(cmds.getcertificatesforsigning()))
+        self.assertIn('certificate', cmds.getcertificateclaims()[0]['value'])
 
 
 class TestGetValueForNameCommand(unittest.TestCase):
@@ -392,6 +574,25 @@ class TestClaimHistoryCommand(unittest.TestCase):
         self.assertEqual([5.1, 3.1, 1.1], [h['value'] for h in cmds.claimhistory()])
 
 
+class TestPayToCommand(unittest.TestCase):
+
+    def test_payto_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        cmds.wallet.create_new_address(for_change=True)
+        destination = cmds.wallet.create_new_address()
+        out = cmds.payto([(destination, 1)])
+        self.assertEqual(True, out['success'])
+
+    def test_payto_throws_not_enough_funds(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        cmds.wallet.create_new_address(for_change=True)
+        destination = cmds.wallet.create_new_address()
+        with self.assertRaises(NotEnoughFunds):
+            cmds.payto([(destination, 510000)])
+
+
 class TestClaimCommand(unittest.TestCase):
 
     def test_claim_success(self):
@@ -403,6 +604,58 @@ class TestClaimCommand(unittest.TestCase):
     def test_claim_not_enough_funds(self):
         cmds = MocCommands()
         out = cmds.claim('test', '[payload]', 1, skip_validate_schema=True, raw=True)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('Not enough funds', out['reason'])
+
+
+class TestRenewClaimCommand(unittest.TestCase):
+
+    def test_renewclaim_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        tx = cmds.wallet.add_claim_transaction('test', 100200)
+        out = cmds.renewclaim(tx.hash(), 0, skip_validate_schema=True)
+        self.assertEqual(True, out['success'])
+
+    def test_renewclaim_fee_more_than_original_bid(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        tx = cmds.wallet.add_claim_transaction('test', 10)
+        out = cmds.renewclaim(tx.hash(), 0, skip_validate_schema=True)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('Fee will exceed amount available in original bid. Increase amount', out['reason'])
+
+
+class TestRenewClaimBeforeExpirationCommand(unittest.TestCase):
+
+    def test_renewclaimbeforeexpiration_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        cmds.wallet.add_claim_transaction('test', 100200)
+        out = cmds.renewclaimsbeforeexpiration(270000, skip_validate_schema=True)
+        self.assertEqual(1, len(out.values()))
+        self.assertEqual(True, out.values()[0]['success'])
+
+    def test_renewclaimbeforeexpiration_nothing_renewed(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        cmds.wallet.add_claim_transaction('test', 100200)
+        out = cmds.renewclaimsbeforeexpiration(260000, skip_validate_schema=True)
+        self.assertEqual(0, len(out.values()))
+
+
+class TestClaimCertificateCommand(unittest.TestCase):
+
+    def test_claimcertificate_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(4003002001000)
+        out = cmds.claimcertificate('lbry://@test', 1000)
+        self.assertEqual(True, out['success'])
+
+    def test_claim_not_enough_funds(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(3002001000)
+        out = cmds.claimcertificate('lbry://@test', 1000)
         self.assertEqual(False, out['success'])
         self.assertEqual('Not enough funds', out['reason'])
 
@@ -433,6 +686,35 @@ class TestUpdateCommand(unittest.TestCase):
         self.assertEqual('No claim to update', out['reason'])
 
 
+class TestSendClaimToAddressCommand(unittest.TestCase):
+
+    def test_sendclaimtoaddress_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        tx = cmds.wallet.add_claim_transaction('test', 1)
+        destination = cmds.wallet.create_new_address()
+        out = cmds.sendclaimtoaddress(tx.get_claim_id(0), destination, 1, skip_validate_schema=True)
+        self.assertEqual(True, out['success'])
+
+    def test_sendclaimtoaddress_not_enough_funds(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(1000)
+        tx = cmds.wallet.add_claim_transaction('test', 1)
+        destination = cmds.wallet.create_new_address()
+        out = cmds.sendclaimtoaddress(tx.get_claim_id(0), destination, 1, skip_validate_schema=True)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('Not enough funds', out['reason'])
+
+    def test_sendclaimtoaddress_not_found(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        cmds.wallet.add_claim_transaction('test', 1)
+        destination = cmds.wallet.create_new_address()
+        out = cmds.sendclaimtoaddress('invalid', destination, 1, skip_validate_schema=True)
+        self.assertEqual(False, out['success'])
+        self.assertEqual('claim not found', out['reason'])
+
+
 class TestSupportCommand(unittest.TestCase):
 
     def test_support_success(self):
@@ -456,6 +738,19 @@ class TestSupportCommand(unittest.TestCase):
         out = cmds.support('test', tx.get_claim_id(0), 1, tx_fee=1)
         self.assertEqual(False, out['success'])
         self.assertEqual('Not enough funds', out['reason'])
+
+
+class TestSendWithSupportCommand(unittest.TestCase):
+
+    def test_sendwithsupport_success(self):
+        cmds = MocCommands()
+        cmds.wallet.add_address_transaction(510000000)
+        tx = cmds.wallet.add_claim_transaction('test', 1)
+        cmds.network = MocNetwork({
+            'blockchain.claimtrie.getclaimbyid': lambda _: SAMPLE_CLAIMS_FOR_NAME_RESULT['claims'][0]
+        })
+        out = cmds.sendwithsupport(tx.get_claim_id(0), 1)
+        self.assertEqual(True, out['success'])
 
 
 class TestAbandonCommand(unittest.TestCase):

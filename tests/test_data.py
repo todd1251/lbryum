@@ -1,3 +1,10 @@
+SECP256K1_PRIVATE_KEY = """-----BEGIN EC PRIVATE KEY-----
+MHQCAQEEIPbjaEfCCCy5HHvGHkEw3X/dTJXlr4jcEJHV1OmcBDPmoAcGBSuBBAAK
+oUQDQgAElLPrkVIapvtKrv0DkgQb9vAXtCQDBIu+iHlsQC5dx1ZnOWZwpYKQuM4i
+LNbuTlfxCHWYwovwLjYnao8iwgp0og==
+-----END EC PRIVATE KEY-----
+"""
+
 SAMPLE_CLAIMS_FOR_NAME_RESULT = {
     "supports_without_claims": [{
         "claimId (no matching claim)": "49cb931d20a96e17348aabbc28b5838e1a650d8c",
