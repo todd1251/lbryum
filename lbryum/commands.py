@@ -1963,7 +1963,7 @@ class Commands(object):
             "nout": nout,
             "tx": str(tx),
             "fee": str(Decimal(tx.get_fee()) / COIN),
-            "claim_id": tx.get_claim_id(nout)
+            "claim_id": tx.get_claim_id(nout),
             "value": val.encode('hex'),
             "claim_address": claim_addr
         }
