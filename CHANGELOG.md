@@ -15,6 +15,7 @@ labeled as 2.7.1. Subsequent releases will follow
   * Use lock when performing WalletStorage.write()
   * Fixed `sendclaimtoaddress` for signed content claims
   * Fixed `https://github.com/lbryio/lbryum/issues/188`
+  * Fixed main account not being created by `restore`
 
 ### Deprecated
   *
@@ -42,6 +43,8 @@ labeled as 2.7.1. Subsequent releases will follow
   * Added OS keyring support for storing the wallet encryption password
   * Added codecov.io reporting and updated README.rst with coverage badge.
   * Added `value` and `claim_address` fields to response from `claim`, `update`, and `claimcertificate`
+  * Added `no_password` parameter to `restore` command
+  * Added `--chain` parameter to command line to specify `lbrycrd_regtest` or `lbrycrd_testnet` instead of default `lbrycrd_main`
 
 ### Removed
   * Removed `tiphistory`, `paytoandsend`, `paytomany`, and `paytomanyandsend` commands

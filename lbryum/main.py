@@ -11,6 +11,7 @@ from lbryum.network import Network, SimpleConfig
 from lbryum.util import json_decode
 from lbryum.errors import InvalidPassword
 from lbryum.wallet import Wallet, WalletStorage
+from lbryum.blockchain import get_blockchain
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ def prompt_password(prompt, confirm=True):
 
 
 def run_non_RPC(config):
+    _ = get_blockchain(config, None)
     cmdname = config.get('cmd')
 
     storage = WalletStorage(config.get_wallet_path())
@@ -39,10 +41,13 @@ def run_non_RPC(config):
 
     if cmdname == 'restore':
         text = config.get('text')
-        password = password_dialog() if Wallet.is_seed(text) or Wallet.is_xprv(
-            text) or Wallet.is_private_key(text) else None
+        no_password = config.get('no_password')
+        password = None
+        if not no_password and (Wallet.is_seed(text) or Wallet.is_xprv(text) or Wallet.is_private_key(text)):
+            password = password_dialog()
         try:
             wallet = Wallet.from_text(text, password, storage)
+            wallet.create_main_account()
         except BaseException as e:
             sys.exit(str(e))
         if not config.get('offline'):
@@ -52,10 +57,9 @@ def run_non_RPC(config):
             log.info("Recovering wallet...")
             wallet.synchronize()
             wallet.wait_until_synchronized()
-            msg = "Recovery successful" if wallet.is_found() else "Found no history for this wallet"
+            print "Recovery successful" if wallet.is_found() else "Found no history for this wallet"
         else:
-            msg = "This wallet was restored offline. It may contain more addresses than displayed."
-        log.info(msg)
+            print "This wallet was restored offline. It may contain more addresses than displayed."
     elif cmdname == 'create':
         password = password_dialog()
         wallet = Wallet(storage)
@@ -138,6 +142,7 @@ def init_cmdline(config_options):
 
 
 def run_offline_command(config, config_options):
+    _ = get_blockchain(config, None)
     cmdname = config.get('cmd')
     cmd = Commands.known_commands[cmdname]
     storage = WalletStorage(config.get_wallet_path())
