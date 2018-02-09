@@ -47,6 +47,7 @@ def run_non_RPC(config):
             password = password_dialog()
         try:
             wallet = Wallet.from_text(text, password, storage)
+            wallet.create_main_account()
         except BaseException as e:
             sys.exit(str(e))
         if not config.get('offline'):
@@ -56,10 +57,9 @@ def run_non_RPC(config):
             log.info("Recovering wallet...")
             wallet.synchronize()
             wallet.wait_until_synchronized()
-            msg = "Recovery successful" if wallet.is_found() else "Found no history for this wallet"
+            print "Recovery successful" if wallet.is_found() else "Found no history for this wallet"
         else:
-            msg = "This wallet was restored offline. It may contain more addresses than displayed."
-        log.info(msg)
+            print "This wallet was restored offline. It may contain more addresses than displayed."
     elif cmdname == 'create':
         password = password_dialog()
         wallet = Wallet(storage)
