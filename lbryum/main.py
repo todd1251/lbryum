@@ -11,6 +11,7 @@ from lbryum.network import Network, SimpleConfig
 from lbryum.util import json_decode
 from lbryum.errors import InvalidPassword
 from lbryum.wallet import Wallet, WalletStorage
+from lbryum.blockchain import get_blockchain
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ def prompt_password(prompt, confirm=True):
 
 
 def run_non_RPC(config):
+    _ = get_blockchain(config, None)
     cmdname = config.get('cmd')
 
     storage = WalletStorage(config.get_wallet_path())
@@ -140,6 +142,7 @@ def init_cmdline(config_options):
 
 
 def run_offline_command(config, config_options):
+    _ = get_blockchain(config, None)
     cmdname = config.get('cmd')
     cmd = Commands.known_commands[cmdname]
     storage = WalletStorage(config.get_wallet_path())

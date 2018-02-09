@@ -2860,6 +2860,8 @@ def get_parser():
                        help="Use local 'electrum_data' directory")
     group.add_argument("-w", "--wallet", dest="wallet_path", help="wallet path")
     group.add_argument("-D", "--dir", dest="lbryum_path", help="electrum directory")
+    group.add_argument("--chain", dest="chain", default="lbrycrd_main",
+                       help="set the blockchain name, for use with regtest and testnet")
     # create main parser
     parser = argparse.ArgumentParser(
         parents=[parent_parser],
