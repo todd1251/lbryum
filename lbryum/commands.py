@@ -197,7 +197,7 @@ class Commands(object):
         raise BaseException('Not a JSON-RPC command')
 
     @command('wn')
-    def restore(self, text):
+    def restore(self, text, no_password=False):
         """Restore a wallet from text. Text can be a seed phrase, a master
         public key, a master private key, a list of bitcoin addresses
         or bitcoin private keys. If you want to be prompted for your
@@ -2712,6 +2712,7 @@ param_descriptions = {
 
 command_options = {
     'password': ("-W", "--password", "Password"),
+    'no_password': (None, "--no_password", "skip password prompt"),
     'receiving': (None, "--receiving", "Show only receiving addresses"),
     'change': (None, "--change", "Show only change addresses"),
     'frozen': (None, "--frozen", "Show only frozen addresses"),
@@ -2790,7 +2791,8 @@ arg_types = {
     'outputs': json_loads,
     'tx_fee': lambda x: str(Decimal(x)) if x is not None else None,
     'amount': lambda x: str(Decimal(x)) if x != '!' else '!',
-    'nout': int
+    'nout': int,
+    'no_password': bool
 }
 
 config_variables = {

@@ -39,8 +39,10 @@ def run_non_RPC(config):
 
     if cmdname == 'restore':
         text = config.get('text')
-        password = password_dialog() if Wallet.is_seed(text) or Wallet.is_xprv(
-            text) or Wallet.is_private_key(text) else None
+        no_password = config.get('no_password')
+        password = None
+        if not no_password and (Wallet.is_seed(text) or Wallet.is_xprv(text) or Wallet.is_private_key(text)):
+            password = password_dialog()
         try:
             wallet = Wallet.from_text(text, password, storage)
         except BaseException as e:
