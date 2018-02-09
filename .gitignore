@@ -12,3 +12,4 @@ env/
 .idea
 .cache
 _trial_temp/
+tests/.coverage*

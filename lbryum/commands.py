@@ -1823,8 +1823,9 @@ class Commands(object):
         if certificate_claim_ids:
             imported_certs = self.getclaimsbyids(certificate_claim_ids, raw=raw)
             for claim_id, cert_claim in imported_certs.iteritems():
-                cert_claim['is_mine'] = False
-                result.append(cert_claim)
+                if cert_claim:
+                    cert_claim['is_mine'] = False
+                    result.append(cert_claim)
         return result
 
     def _calculate_fee(self, inputs, outputs, set_tx_fee=None):

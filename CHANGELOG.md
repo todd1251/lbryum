@@ -16,6 +16,7 @@ labeled as 2.7.1. Subsequent releases will follow
   * Fixed `sendclaimtoaddress` for signed content claims
   * Fixed `https://github.com/lbryio/lbryum/issues/188`
   * Fixed main account not being created by `restore`
+  * Fixed claim result from `getcertificatesforsigning` with only the `is_mine` field being returned for claims that aren't yet returned by `getclaimsbyids`. This caused bugs when making claims with channels that were not yet confirmed (https://github.com/lbryio/lbry/issues/1037).
 
 ### Deprecated
   *
