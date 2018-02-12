@@ -1,3 +1,4 @@
+import os.path
 import unittest
 import time
 import threading
@@ -174,8 +175,8 @@ class TestMain(unittest.TestCase):
     @patch('sys.stdout', new_callable=StringIO)
     def test_main(self, stdout):
         with self.assertRaises(SystemExit):
-            main.main(["version"])
-        self.assertEqual(__version__, stdout.getvalue())
+            main.main(["version", "-D", "."])
+        self.assertEqual(stdout.getvalue().strip(), '"'+__version__+'"')
 
 
 class TestUtilCommands(unittest.TestCase):
