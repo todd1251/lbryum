@@ -1,11 +1,15 @@
 import unittest
 import time
+import threading
+from mock import patch
+from StringIO import StringIO
 from collections import OrderedDict
 
 from lbryschema.claim import ClaimDict
 from lbryschema.signer import SECP256k1
 
-from lbryum import commands, wallet, transaction, bip32, network, blockchain, lbrycrd, contacts
+from lbryum import __version__
+from lbryum import commands, wallet, transaction, bip32, network, blockchain, lbrycrd, contacts, main
 from lbryum.errors import NotEnoughFunds
 from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
 from test_data import SAMPLE_CLAIMS_FOR_NAME_RESULT, SAMPLE_CLAIMTRIE_GETVALUE_RESULT,\
@@ -16,8 +20,14 @@ PUBKEY = 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY
 
 
 class MocStore(dict):
+    def __init__(self):
+        self.lock = threading.Lock()
+
     def put(self, key, val):
         self[key] = val
+
+    def write(self):
+        pass
 
 
 class Contacts(contacts.Contacts):
@@ -159,6 +169,15 @@ class MocCommands(commands.Commands):
         self._password = None
 
 
+class TestMain(unittest.TestCase):
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_main(self, stdout):
+        with self.assertRaises(SystemExit):
+            main.main(["version"])
+        self.assertEqual(__version__, stdout.getvalue())
+
+
 class TestUtilCommands(unittest.TestCase):
 
     def test_commands(self):
@@ -166,6 +185,10 @@ class TestUtilCommands(unittest.TestCase):
         self.assertEqual(
             95, len(cmds.commands().split())
         )
+
+    def test_get_parser(self):
+        parser = commands.get_parser()
+        self.assertIn('lbryum help', parser.format_help())
 
     def test_locked(self):
         cmds = MocCommands()
@@ -175,17 +198,31 @@ class TestUtilCommands(unittest.TestCase):
         cmds._password = 'foo'
         self.assertEqual(False, cmds.locked)
 
-    @unittest.skip('todo: finish implementing')
+    seed_text = (
+        "travel nowhere air position hill peace suffer parent beautiful"
+        "rise blood power home crumble teach"
+    )
+    password = "secret"
+
     def test_lock_unlock(self):
         cmds = MocCommands()
         self.assertEqual(False, cmds.locked)
         cmds.wallet.use_encryption = True
         cmds.lock_wallet()
         self.assertEqual(True, cmds.locked)
-        cmds.wallet.master_private_keys['x/'] = SECP256K1_PRIVATE_KEY
-        cmds.wallet.master_public_keys['x/'] = SECP256K1_PRIVATE_KEY
-        cmds.unlock_wallet('foo')
+        cmds.wallet.add_seed(self.seed_text, self.password)
+        cmds.wallet.create_master_keys(self.password)
+        cmds.unlock_wallet(self.password)
         self.assertEqual(False, cmds.locked)
+
+    def test_update_password(self):
+        cmds = MocCommands()
+        cmds.wallet.use_encryption = True
+        cmds.wallet.add_seed(self.seed_text, self.password)
+        cmds.wallet.create_master_keys(self.password)
+        cmds._password = self.password
+        cmds.update_password('foo', update_keyring=False)
+        self.assertEqual(cmds._password, 'foo')
 
 
 class TestImportExportCertificateInfoCommand(unittest.TestCase):
