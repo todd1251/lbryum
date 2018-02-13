@@ -34,7 +34,7 @@ class TestMiscCommands(unittest.TestCase):
     def test_commands(self):
         cmds = MocCommands()
         self.assertEqual(
-            94, len(cmds.commands().split())
+            95, len(cmds.commands().split())
         )
 
     def test_get_parser(self):
