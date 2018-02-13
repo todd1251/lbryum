@@ -1,173 +1,17 @@
-import os.path
 import unittest
-import time
-import threading
 from mock import patch
 from StringIO import StringIO
-from collections import OrderedDict
 
 from lbryschema.claim import ClaimDict
 from lbryschema.signer import SECP256k1
 
+from lbryum import main
 from lbryum import __version__
-from lbryum import commands, wallet, transaction, bip32, network, blockchain, lbrycrd, contacts, main
 from lbryum.errors import NotEnoughFunds
-from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_UPDATE, TYPE_SUPPORT, TYPE_SCRIPT
 from test_data import SAMPLE_CLAIMS_FOR_NAME_RESULT, SAMPLE_CLAIMTRIE_GETVALUE_RESULT,\
     SAMPLE_CLAIMTRIE_GETVALUEFORURI_RESULT, SECP256K1_PRIVATE_KEY
 
-
-PUBKEY = 'xpub661MyMwAqRbcF8M4CH68NvHEc6TUNaVhXwmGrsagNjrCja49H9L4ziJGe8YmaSBPbY4ZmQPQeW5CK6fiwx2EH6VxQab3zwDzZVWVApDSVNh'
-
-
-class MocStore(dict):
-    def __init__(self):
-        self.lock = threading.Lock()
-
-    def put(self, key, val):
-        self[key] = val
-
-    def write(self):
-        pass
-
-
-class Contacts(contacts.Contacts):
-    def __init__(self):
-        pass
-
-
-class MocWallet(wallet.NewWallet):
-
-    def __init__(self):
-        super(MocWallet, self).__init__(MocStore())
-        self.accounts = {'0': bip32.BIP32_Account({'xpub': PUBKEY})}
-        self.send_tx_connected = True
-        self.send_tx_success = True
-        self.sent_transactions = []
-        self.height = 0
-        self.transactions = OrderedDict()
-
-    @property
-    def next_height(self):
-        self.height += 1
-        return self.height
-
-    @property
-    def last_transaction(self):
-        return next(reversed(self.transactions.values()))
-
-    def send_tx(self, tx, timeout=300):
-        self.sent_transactions.append(tx)
-        if not self.send_tx_connected:
-            raise Exception("Not connected.")
-        tx.raw = tx.serialize()
-        return self.send_tx_success, tx.raw
-
-    def sign_transaction(self, tx, password):
-        for txi in tx._inputs:
-            if 'signatures' not in txi:
-                txi.update({
-                    'height': self.next_height,
-                    'signatures': [None],
-                    'pubkeys': ['02e61d176da16edd1d258a200ad9759ef63adf8e14cd97f53227bae35cdb84d2f6'],
-                    'x_pubkeys': ['02e61d176da16edd1d258a200ad9759ef63adf8e14cd97f53227bae35cdb84d2f6']
-                })
-
-    def add_address_transaction(self, amount):
-        out_address = self.create_new_address()
-        return self._add_transaction(
-            out_address, amount,
-            (TYPE_ADDRESS, out_address, amount)
-        )
-
-    def add_claim_transaction(self, name, amount, value=''):
-        out_address = self.create_new_address()
-        return self._add_transaction(
-            out_address, amount,
-            (TYPE_CLAIM | TYPE_SCRIPT, ((name, value), out_address), amount)
-        )
-
-    def add_support_transaction(self, name, amount, claim_id, claim_addr):
-        out_address = self.create_new_address()
-        return self._add_transaction(
-            out_address, amount,
-            (TYPE_ADDRESS | TYPE_SUPPORT, ((name, claim_id), claim_addr), amount)
-        )
-
-    def _add_transaction(self, out_address, out_amount, out_data):
-        in_address = self.create_new_address()
-        tx = transaction.Transaction.from_io(
-            [{
-                'address': in_address,
-                'prevout_hash': '3140eb24b43386f35ba69e3875eb6c93130ac66201d01c58f598defc949a5c2a',
-                'prevout_n': 0,
-            }],
-            [
-                out_data
-            ]
-        )
-        self.sign_transaction(tx, '')
-        tx.raw = tx.serialize()
-        tx_hash = tx.hash()
-        tx_height = self.next_height
-        self.history.setdefault(out_address, [])
-        self.history[out_address].append([tx_hash, tx_height])
-        self.txo[tx_hash] = {
-            out_address: [(0, out_amount, False)]
-        }
-        self.transactions[tx_hash] = tx
-        return tx
-
-    def make_last_tx_verified(self):
-        tx = self.last_transaction
-        out_address = self.txo[tx.hash()].keys()[0]
-        height = self.history[out_address][0][1]
-        self.verified_tx[tx.hash()] = (height, time.time(), 1)
-
-
-class MocBlockchain(blockchain.LbryCrd):
-
-    def __init__(self, config, network):
-        chain = self.BLOCKCHAIN_NAME
-        params = blockchain.blockchain_params
-        script_address = params[chain]['script_address']
-        script_address_prefix = params[chain]['script_address_prefix']
-        pubkey_address = params[chain]['pubkey_address']
-        pubkey_address_prefix = params[chain]['pubkey_address_prefix']
-        lbrycrd.SCRIPT_ADDRESS = (script_address, script_address_prefix)
-        lbrycrd.PUBKEY_ADDRESS = (pubkey_address, pubkey_address_prefix)
-        super(MocBlockchain, self).__init__(config, network)
-        self.respond_with_header = None
-
-    def read_header(self, block_height):
-        return self.respond_with_header
-
-
-class MocNetwork(network.Network):
-
-    def __init__(self, responses=None):
-        self.responses = responses or {}
-        self.config = network.SimpleConfig({
-            'lbryum_path': '.',
-            'chain': 'lbrycrd_main'
-        })
-        self.default_server = 'lbry.io:50001:t'
-        self.heights = {self.default_server: 1}
-        self.blockchain = MocBlockchain(self.config, self)
-
-    def send(self, request, callback):
-        assert len(request) == 1, 'Mock network only supports one request at a time.'
-        request = request[0]
-        callback({'result': self.responses[request[0]](request[1])})
-
-
-class MocCommands(commands.Commands):
-    def __init__(self, config=None, wallet=None, network=None):
-        self.config = config or {}
-        self.wallet = wallet or MocWallet()
-        self.network = network or MocNetwork()
-        self.contacts = Contacts()
-        self._password = None
+from testing import *
 
 
 class TestMain(unittest.TestCase):
@@ -179,12 +23,18 @@ class TestMain(unittest.TestCase):
         self.assertEqual(stdout.getvalue().strip(), '"'+__version__+'"')
 
 
-class TestUtilCommands(unittest.TestCase):
+class TestMiscCommands(unittest.TestCase):
+
+    seed_text = (
+        "travel nowhere air position hill peace suffer parent beautiful"
+        "rise blood power home crumble teach"
+    )
+    password = "secret"
 
     def test_commands(self):
         cmds = MocCommands()
         self.assertEqual(
-            95, len(cmds.commands().split())
+            94, len(cmds.commands().split())
         )
 
     def test_get_parser(self):
@@ -199,31 +49,62 @@ class TestUtilCommands(unittest.TestCase):
         cmds._password = 'foo'
         self.assertEqual(False, cmds.locked)
 
-    seed_text = (
-        "travel nowhere air position hill peace suffer parent beautiful"
-        "rise blood power home crumble teach"
-    )
-    password = "secret"
-
     def test_lock_unlock(self):
         cmds = MocCommands()
         self.assertEqual(False, cmds.locked)
-        cmds.wallet.use_encryption = True
+
+        # unlocking an already unlocked wallet
+        cmds.wallet.use_encryption = False
+        cmds.unlock_wallet(self.password)
+        self.assertEqual(False, cmds.locked)
+        cmds._password = self.password
+        cmds.unlock_wallet(self.password)
+        self.assertEqual(False, cmds.locked)
+
+        # lock wallet
         cmds.lock_wallet()
+        cmds.wallet.use_encryption = True
         self.assertEqual(True, cmds.locked)
+
+        # unlock a genuinely locked wallet
         cmds.wallet.add_seed(self.seed_text, self.password)
         cmds.wallet.create_master_keys(self.password)
         cmds.unlock_wallet(self.password)
         self.assertEqual(False, cmds.locked)
 
+    def test_decrypt_wallet(self):
+        cmds = MocCommands()
+        cmds.wallet.add_seed(self.seed_text, self.password)
+        cmds.wallet.create_master_keys(self.password)
+        cmds._password = self.password
+
+        cmds.wallet.use_encryption = False
+        cmds.decrypt_wallet()
+        self.assertEqual(0, cmds.wallet.storage.write_called)
+
+        cmds.wallet.use_encryption = True
+        cmds.decrypt_wallet()
+        self.assertEqual(1, cmds.wallet.storage.write_called)
+
     def test_update_password(self):
         cmds = MocCommands()
+
+        cmds.update_password(None)
+        self.assertEqual(cmds._password, None)
+
         cmds.wallet.use_encryption = True
         cmds.wallet.add_seed(self.seed_text, self.password)
         cmds.wallet.create_master_keys(self.password)
         cmds._password = self.password
-        cmds.update_password('foo', update_keyring=False)
+        cmds.update_password('foo')
         self.assertEqual(cmds._password, 'foo')
+        self.assertTrue(cmds._keyring.set_password_called)
+
+        cmds._keyring = None
+        with self.assertRaises(ValueError):
+            cmds.update_password('foo')
+
+        self.assertEqual({'password': True}, cmds.password())
 
 
 class TestImportExportCertificateInfoCommand(unittest.TestCase):

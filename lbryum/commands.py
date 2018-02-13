@@ -246,12 +246,6 @@ class Commands(object):
         return Mnemonic(language).check_seed(seed, entropy)
 
     @command('n')
-    def netapi(self, command, arg1=None, arg2=None, arg3=None):
-        """Test the network API"""
-        args = filter(None, [arg1, arg2, arg3])
-        return self.network.synchronous_get((command, args))
-
-    @command('n')
     def getaddresshistory(self, address):
         """Return the transaction history of any address. Note: This is a
         walletless server query, results are not checked by SPV.
