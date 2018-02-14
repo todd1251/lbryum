@@ -478,14 +478,14 @@ class Commands(object):
         fee = int(Decimal(tx_fee) * COIN)
         tx = Transaction.sweep(privkeys, self.network, dest, fee)
 
+        txid = None
         if broadcast:
-            success, out = self.wallet.send_tx(tx, wait=False)
-            if not success:
-                return {'success': False, 'reason': out}
+            txid = self.broadcast(str(tx))
 
         return {
             'success': tx is not None,
             'tx': str(tx),
+            'txid': txid,
             'fee': str(Decimal(tx_fee) / COIN)
         }
 
