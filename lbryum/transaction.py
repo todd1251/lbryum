@@ -551,7 +551,7 @@ class Transaction(object):
         return Hash(self.raw.decode('hex'))[::-1].encode('hex')
 
     def get_claim_id(self, nout):
-        if nout < 0 or len(self._outputs) < nout:
+        if nout < 0:
             raise IndexError
         if not self._outputs[nout][0] & TYPE_CLAIM:
             raise ValueError
