@@ -484,7 +484,7 @@ class Commands(object):
                 return {'success': False, 'reason': out}
 
         return {
-            'success': (tx != None),
+            'success': tx is not None,
             'tx': str(tx),
             'fee': str(Decimal(tx_fee) / COIN)
         }
