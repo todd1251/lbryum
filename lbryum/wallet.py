@@ -1222,7 +1222,7 @@ class Abstract_Wallet(PrintError):
         if keypairs:
             tx.sign(keypairs)
 
-    def send_tx(self, tx, timeout=300, wait=True):
+    def send_tx(self, tx, timeout=300):
         # fixme: this does not handle the case where server does not answer
         if not self.network.interface:
             raise Exception("Not connected.")
@@ -1239,18 +1239,17 @@ class Abstract_Wallet(PrintError):
                 log.error("send tx failed: %s", result)
                 return success, result
 
-            if wait:
-                log.debug("waiting for %s to be added to the wallet", txid)
-                now = time.time()
-                while txid not in self.transactions and time.time() < now + timeout:
-                    time.sleep(0.2)
+            log.debug("waiting for %s to be added to the wallet", txid)
+            now = time.time()
+            while txid not in self.transactions and time.time() < now + timeout:
+                time.sleep(0.2)
 
-                if txid not in self.transactions:
-                    #TODO: detect if the txid is not known because it changed
-                    log.error("timed out while waiting to receive back a broadcast transaction, "
-                              "expected txid: %s", txid)
-                    return False, "timed out while waiting to receive back a broadcast transaction, " \
-                                  "expected txid: %s" % txid
+            if txid not in self.transactions:
+                #TODO: detect if the txid is not known because it changed
+                log.error("timed out while waiting to receive back a broadcast transaction, "
+                          "expected txid: %s", txid)
+                return False, "timed out while waiting to receive back a broadcast transaction, " \
+                              "expected txid: %s" % txid
 
             log.info("successfully sent %s", txid)
         return success, result

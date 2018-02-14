@@ -465,7 +465,7 @@ class Commands(object):
             raise BaseException('cannot verify alias', x)
         return out['address']
 
-    @command('wn')
+    @command('n')
     def sweep(self, privkey, destination, tx_fee=None, nocheck=False, broadcast=False):
         """Sweep private keys. Returns a transaction that spends UTXOs from
         privkey to a destination address. The transaction is not
