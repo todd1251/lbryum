@@ -2,7 +2,8 @@ import unittest
 
 from lbryum import transaction
 from lbryum import bcd_data_stream
-from lbryum.constants import TYPE_ADDRESS
+from lbryum.constants import TYPE_ADDRESS, TYPE_CLAIM, TYPE_SCRIPT
+from testing import MocWallet
 
 unsigned_blob = '01000000012a5c9a94fcde98f5581cd00162c60a13936ceb75389ea65bf38633b424eb4031000000005701ff4c53ff0488b21e03ef2afea18000000089689bff23e1e7fb2f161daa37270a97a3d8c2e537584b2d304ecb47b86d21fc021b010d3bd425f8cf2e04824bfdf1f1f5ff1d51fadd9a41f9e3fb8dd3403b1bfe00000000ffffffff0140420f00000000001976a914230ac37834073a42146f11ef8414ae929feaafc388ac00000000'
 signed_blob = '01000000012a5c9a94fcde98f5581cd00162c60a13936ceb75389ea65bf38633b424eb4031000000006c493046022100a82bbc57a0136751e5433f41cf000b3f1a99c6744775e76ec764fb78c54ee100022100f9e80b7de89de861dc6fb0c1429d5da72c2b6b2ee2406bc9bfb1beedd729d985012102e61d176da16edd1d258a200ad9759ef63adf8e14cd97f53227bae35cdb84d2f6ffffffff0140420f00000000001976a914230ac37834073a42146f11ef8414ae929feaafc388ac00000000'
@@ -149,3 +150,38 @@ class NetworkMock(object):
 
     def synchronous_get(self, arg):
         return self.unspent
+
+
+class TestGetClaimId(unittest.TestCase):
+
+    def setUp(self):
+        w = MocWallet()
+        in_addr, out_addr1, out_addr2 = (w.create_new_address() for _ in range(3))
+        self.tx = transaction.Transaction.from_io(
+            [{
+                'address': in_addr,
+                'prevout_hash': '3140eb24b43386f35ba69e3875eb6c93130ac66201d01c58f598defc949a5c2a',
+                'prevout_n': 0,
+                'signatures': [None],
+                'x_pubkeys': ['02e61d176da16edd1d258a200ad9759ef63adf8e14cd97f53227bae35cdb84d2f6']
+            }], [
+                (TYPE_CLAIM | TYPE_SCRIPT, (('test1', ''), out_addr1), 310000000),
+                (TYPE_CLAIM | TYPE_SCRIPT, (('test2', ''), out_addr2), 310000000),
+                (TYPE_ADDRESS, out_addr2, 310000000)
+            ]
+        )
+        self.tx.raw = self.tx.serialize()
+
+    def test_happy_path(self):
+        self.assertEqual(self.tx.get_claim_id(0), 'f5b3e7424f6c486d63472f5965d1587e5ff0fe95')
+        self.assertEqual(self.tx.get_claim_id(1), '1f943ca336e2e0886b911551a25ad9b72df246f7')
+
+    def test_value_error(self):
+        with self.assertRaises(ValueError):
+            self.tx.get_claim_id(2)
+
+    def test_index_error(self):
+        with self.assertRaises(IndexError):
+            self.tx.get_claim_id(-1)
+        with self.assertRaises(IndexError):
+            self.tx.get_claim_id(3)

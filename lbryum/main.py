@@ -174,13 +174,13 @@ def run_offline_command(config, config_options):
     return result
 
 
-def main():
+def main(args=None):
     # make sure that certificates are here
     assert os.path.exists(requests.utils.DEFAULT_CA_BUNDLE_PATH)
 
     # parse command line
     parser = get_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     if args.verbose:
         logging.getLogger("lbryum").setLevel(logging.INFO)
